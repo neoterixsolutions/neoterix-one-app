@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Neoterix One App</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F3864">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Neoterix">
+<style>
+:root{--b:#1F3864;--a:#2E75B6;--bg:#F3F5F9;--t:#1d2433;--m:#667085;--r:#C62828;--g:#2E7D32;--y:#B26A00;--line:#E4E7EC}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--t);font-size:15px;-webkit-tap-highlight-color:transparent}
+header{background:var(--b);color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+header .t{font-weight:700;font-size:16px} header .u{font-size:12px;opacity:.85}
+header button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:14px;padding:6px 12px;font-size:13px}
+main{padding:12px 12px 90px;max-width:860px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;z-index:5;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;padding:8px 2px 10px;font-size:11px;color:var(--m)}
+nav button.on{color:var(--b);font-weight:700} nav .i{display:block;font-size:20px;line-height:24px}
+.card{background:#fff;border-radius:12px;padding:12px 14px;margin:0 0 10px;box-shadow:0 1px 2px rgba(16,24,40,.06)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.muted{color:var(--m);font-size:13px} .h{font-size:18px;font-weight:700;margin:6px 0 10px}
+.name{font-weight:700;font-size:16px}
+.badge{display:inline-block;font-size:11px;padding:3px 8px;border-radius:10px;background:#E8EEF8;color:var(--b);white-space:nowrap}
+.badge.red{background:#FDECEC;color:var(--r)} .badge.green{background:#E7F4EA;color:var(--g)} .badge.amber{background:#FFF3E0;color:var(--y)}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:13px;font-size:15px;font-weight:600;background:var(--a);color:#fff;margin-top:10px;cursor:pointer}
+.btn.sec{background:#E8EEF8;color:var(--b)} .btn.red{background:var(--r)} .btn.green{background:var(--g)}
+.btn:disabled{opacity:.5}
+.two{display:flex;gap:8px} .two .btn{flex:1}
+label{display:block;font-size:13px;color:var(--m);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:11px;border:1px solid #CBD2DD;border-radius:9px;font-size:15px;background:#fff;color:var(--t);font-family:inherit}
+textarea{min-height:64px}
+.chk{display:flex;align-items:center;gap:10px;margin:12px 0;font-size:15px} .chk input{width:22px;height:22px}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px} @media(min-width:640px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(16,24,40,.06)} .tile .v{font-size:20px;font-weight:700;color:var(--b)} .tile .k{font-size:12px;color:var(--m)}
+.tbl{overflow-x:auto;background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 2px rgba(16,24,40,.06)}
+table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap} th:first-child,td:first-child{text-align:left} th{background:#E8EEF8;color:var(--b);font-weight:600}
+.prog{display:flex;gap:3px;margin:10px 0 4px} .prog span{flex:1;height:7px;border-radius:4px;background:#DCE2EB} .prog span.d{background:var(--g)} .prog span.c{background:var(--a)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;margin-bottom:4px} .chip{border:1px solid #CBD2DD;background:#fff;border-radius:16px;padding:7px 12px;font-size:13px;white-space:nowrap;cursor:pointer} .chip.on{background:var(--b);color:#fff;border-color:var(--b)}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;z-index:9;display:none;max-width:90%;text-align:center}
+.load{text-align:center;color:var(--m);padding:40px 10px}
+.item{cursor:pointer}
+.st{font-weight:700;margin:18px 0 8px;color:var(--b);font-size:15px}
+.kv{display:grid;grid-template-columns:44% 56%;gap:6px 10px;font-size:14px} .kv .k{color:var(--m)}
+.note{background:#FFF8E6;border-radius:9px;padding:10px;font-size:14px;margin:8px 0}
+.note.ok{background:#E7F4EA} .note.bad{background:#FDECEC}
+.login{max-width:380px;margin:40px auto}
+.logo{font-size:24px;font-weight:800;color:var(--b);text-align:center;margin-bottom:4px}
+.act{font-size:13px;border-bottom:1px solid var(--line);padding:7px 0} .act:last-child{border:0}
+details summary{cursor:pointer;color:var(--a);font-weight:600;padding:6px 0}
+</style>
+</head>
+<body>
+<header id="hdr" style="display:none"><div><div class="t">Neoterix One App</div><div class="u" id="who"></div></div><button onclick="logout()">Logout</button></header>
+<main id="app"><div class="load">Loading…</div></main>
+<nav id="nav" style="display:none"></nav>
+<div class="toast" id="toast"></div>
+<script>
+var S = {token: null, boot: null, tab: 'work', stage: '', q: '', scope: 'mine'};
+
+function store(k, v) {
+  try {
+    if (v === undefined) return localStorage.getItem(k);
+    if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+  } catch (e) { return null; }
+}
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
+function inr(n) { n = Number(n || 0); return 'Rs ' + n.toLocaleString('en-IN', {maximumFractionDigits: 0}); }
+function lakh(n) { n = Number(n || 0); if (Math.abs(n) >= 100000) return 'Rs ' + (n / 100000).toFixed(2) + ' L'; return inr(n); }
+function toast(m) { var t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, 3500); }
+function set(html) { $('app').innerHTML = html; window.scrollTo(0, 0); }
+function loading() { set('<div class="load">Loading…</div>'); }
+
+var API = 'https://script.google.com/macros/s/AKfycbyNt8NTdEfR3ord2GOstNlQfjBJ5AAhwfO3aAha825QE0gCM-pR2PeTRFZoRTrOwu9q/exec';
+function call(action, payload, ok, fail) {
+  fetch(API, {method: 'POST', body: JSON.stringify({token: S.token, action: action, payload: payload || {}})})
+    .then(function (r) { return r.text(); })
+    .then(function (r) {
+      var d;
+      try { d = JSON.parse(r); } catch (e) { throw new Error('Server is not reachable. Try again in a minute.'); }
+      if (d.error === 'SESSION') { store('tok', null); S.token = null; showLogin('Please log in again.'); return; }
+      if (d.error) { toast(d.error); if (fail) fail(d); return; }
+      ok(d);
+    })
+    .catch(function (e) { toast(navigator.onLine ? 'Network problem: ' + e.message : 'You are offline. Check mobile data.'); if (fail) fail({error: e.message}); });
+}
+if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }
+
+// ---------------------------------------------------------------- login
+function showLogin(msg) {
+  $('hdr').style.display = 'none'; $('nav').style.display = 'none';
+  set('<div class="login card"><div class="logo">Neoterix One App</div><div class="muted" style="text-align:center">UGES · Reliable · Neoterix</div>' +
+    (msg ? '<div class="note">' + esc(msg) + '</div>' : '') +
+    '<label>Login ID</label><input id="lid" autocapitalize="none" autocomplete="username" placeholder="e.g. roma">' +
+    '<label>PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="4–8 digits">' +
+    '<button class="btn" id="lbtn" onclick="doLogin()">Log in</button></div>');
+  $('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+}
+function doLogin() {
+  var b = $('lbtn'); b.disabled = true; b.textContent = 'Checking…';
+  call('login', {loginId: $('lid').value, pin: $('pin').value}, function (d) {
+    S.token = d.token; store('tok', d.token);
+    if (d.mustChange) showChangePin(true); else start();
+  }, function () { b.disabled = false; b.textContent = 'Log in'; });
+}
+function showChangePin(first) {
+  $('hdr').style.display = 'none'; $('nav').style.display = 'none';
+  set('<div class="login card"><div class="h">' + (first ? 'Set your own PIN' : 'Change PIN') + '</div>' +
+    '<div class="muted">Choose 4 to 8 digits. Do not share it with anyone.</div>' +
+    '<label>New PIN</label><input id="p1" type="password" inputmode="numeric">' +
+    '<label>Repeat new PIN</label><input id="p2" type="password" inputmode="numeric">' +
+    '<button class="btn" onclick="savePin()">Save PIN</button>' + (first ? '' : '<button class="btn sec" onclick="start()">Cancel</button>') + '</div>');
+}
+function savePin() {
+  if ($('p1').value !== $('p2').value) { toast('The two PINs do not match.'); return; }
+  call('changePin', {pin: $('p1').value}, function () { toast('PIN saved.'); start(); });
+}
+function logout() { call('logout', {}, function () {}); store('tok', null); S.token = null; showLogin(); }
+
+// ---------------------------------------------------------------- shell
+function start() {
+  loading();
+  call('boot', {}, function (d) {
+    S.boot = d;
+    if (d.user.mustChange) { showChangePin(true); return; }
+    $('hdr').style.display = 'flex';
+    $('who').textContent = d.user.name + ' · ' + d.user.roles.map(function (r) { return d.roles[r] || r; }).join(', ');
+    renderNav(); go(S.tab);
+  });
+}
+function renderNav() {
+  var u = S.boot.user, tabs = [['work', '✓', 'My work'], ['cust', '☰', 'Customers'], ['lead', '+', 'New lead']];
+  if (u.mgr) tabs.push(['dash', '▦', 'Dashboard']);
+  if (u.admin) tabs.push(['admin', '⚙', 'Users']);
+  $('nav').innerHTML = tabs.map(function (t) { return '<button id="nb_' + t[0] + '" onclick="go(\'' + t[0] + '\')"><span class="i">' + t[1] + '</span>' + t[2] + '</button>'; }).join('');
+  $('nav').style.display = 'flex';
+}
+function go(tab) {
+  S.tab = tab;
+  var bs = document.querySelectorAll('nav button'); for (var i = 0; i < bs.length; i++) bs[i].className = '';
+  if ($('nb_' + tab)) $('nb_' + tab).className = 'on';
+  if (tab === 'work') work(); else if (tab === 'cust') customers(); else if (tab === 'lead') newLead(); else if (tab === 'dash') dashboard(); else if (tab === 'admin') admin();
+}
+function stageBadge(stage, overdue) {
+  var cls = stage === 'Closed - Complete' ? 'green' : (stage === 'Cancelled' ? 'red' : '');
+  return '<span class="badge ' + cls + '">' + esc(stage) + '</span>' + (overdue ? ' <span class="badge red">Overdue</span>' : '');
+}
+function due(d) {
+  if (!d) return '';
+  var now = new Date(), t = new Date(d.replace(' ', 'T') + ':00+05:30'), h = Math.round((t - now) / 3600000);
+  if (h < 0) return 'overdue by ' + (h > -48 ? (-h) + ' h' : Math.round(-h / 24) + ' days');
+  return 'due in ' + (h < 48 ? h + ' h' : Math.round(h / 24) + ' days');
+}
+
+// ---------------------------------------------------------------- my work
+function work() {
+  loading();
+  call('myWork', {scope: S.scope}, function (d) {
+    var u = S.boot.user, h = '';
+    if (u.mgr) h += '<div class="chips"><span class="chip ' + (S.scope === 'mine' ? 'on' : '') + '" onclick="S.scope=\'mine\';work()">My tasks</span><span class="chip ' + (S.scope === 'team' ? 'on' : '') + '" onclick="S.scope=\'team\';work()">Whole team</span></div>';
+    var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
+    h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
+    if (over) h += '<div class="note bad">' + over + ' task' + (over > 1 ? 's are' : ' is') + ' overdue.</div>';
+    if (!d.tasks.length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    d.tasks.forEach(function (t) {
+      var o = t.order;
+      h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(t.Stage, t.Overdue) + '</div>' +
+        '<div style="margin:6px 0">' + esc(t.Title) + '</div>' +
+        '<div class="row muted"><span>' + esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.City ? ' · ' + esc(o.City) : '') + '</span><span>' + due(t.DueAt) + '</span></div>' +
+        (S.scope === 'team' ? '<div class="muted">Owner: ' + esc(t.OwnerName) + '</div>' : '') + '</div>';
+    });
+    set(h);
+  });
+}
+
+// ---------------------------------------------------------------- customers
+function customers() {
+  var chips = '<span class="chip ' + (S.stage === '' ? 'on' : '') + '" onclick="S.stage=\'\';customers()">All active</span>' +
+    S.boot.stages.map(function (s) { return '<span class="chip ' + (S.stage === s.code ? 'on' : '') + '" onclick="S.stage=\'' + s.code + '\';customers()">' + esc(s.code) + '</span>'; }).join('');
+  set('<input id="q" placeholder="Search name, mobile, city, order ID" value="' + esc(S.q) + '"><div class="chips" style="margin-top:8px">' + chips + '</div><div id="list"><div class="load">Loading…</div></div>');
+  var timer;
+  $('q').addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { S.q = $('q').value; loadList(); }, 400); });
+  loadList();
+}
+function loadList() {
+  call('orders', {q: S.q, stage: S.stage, all: !!S.q}, function (d) {
+    var h = '<div class="muted" style="margin-bottom:8px">' + d.total + ' customer' + (d.total === 1 ? '' : 's') + '</div>';
+    d.orders.forEach(function (o) {
+      h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div>' +
+        '<div class="row muted" style="margin-top:6px"><span>' + esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.OrderValue ? ' · ' + lakh(o.OrderValue) : '') + (o.SalesExec ? ' · ' + esc(o.SalesExec) : '') + '</span><span>' + (o.DaysInStage !== '' ? o.DaysInStage + ' d in stage' : '') + '</span></div>' +
+        (o.Balance > 0 && o.OrderValue ? '<div class="muted">Balance ' + lakh(o.Balance) + '</div>' : '') + '</div>';
+    });
+    if ($('list')) $('list').innerHTML = h;
+  });
+}
+
+// ---------------------------------------------------------------- order detail
+function peopleFor(role, vert) {
+  return S.boot.people.filter(function (p) { return p.roles.indexOf(role) > -1 && (p.verts.indexOf(vert) > -1 || p.verts.indexOf('ALL') > -1); }).map(function (p) { return p.name; });
+}
+function input(k, v, vert) {
+  var f = S.boot.fields[k]; if (!f) return '';
+  v = v === null || v === undefined ? '' : v;
+  var id = 'f_' + k, h = '';
+  if (f.t === 'check') return '<label class="chk"><input type="checkbox" id="' + id + '" data-f="' + k + '"' + (v ? ' checked' : '') + '> ' + esc(f.l) + '</label>';
+  h += '<label for="' + id + '">' + esc(f.l) + '</label>';
+  if (f.t === 'select' || f.t === 'user') {
+    var opts = f.t === 'user' ? peopleFor(f.role, vert) : f.o;
+    if (v && opts.indexOf(v) < 0) opts = [v].concat(opts);
+    h += '<select id="' + id + '" data-f="' + k + '"><option value="">— choose —</option>' + opts.map(function (o) { return '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+  } else if (f.t === 'textarea') {
+    h += '<textarea id="' + id + '" data-f="' + k + '">' + esc(v) + '</textarea>';
+  } else {
+    var type = f.t === 'number' ? 'number' : (f.t === 'date' ? (/^[0-9]{4}-/.test(v) || !v ? 'date' : 'text') : (f.t === 'tel' ? 'tel' : 'text'));
+    h += '<input id="' + id + '" data-f="' + k + '" type="' + type + '"' + (f.t === 'number' ? ' inputmode="decimal"' : '') + ' value="' + esc(v) + '">';
+  }
+  return h;
+}
+function collect(boxId) {
+  var vals = {}, els = $(boxId).querySelectorAll('[data-f]');
+  for (var i = 0; i < els.length; i++) { var e = els[i]; vals[e.getAttribute('data-f')] = e.type === 'checkbox' ? e.checked : e.value; }
+  return vals;
+}
+function progress(stage) {
+  var idx = -1; S.boot.stages.forEach(function (s, i) { if (s.code === stage) idx = i; });
+  if (stage === 'Closed - Complete') idx = S.boot.stages.length;
+  return '<div class="prog">' + S.boot.stages.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
+}
+function openOrder(id) {
+  S.cur = id; loading();
+  call('order', {id: id}, function (d) { renderOrder(d); });
+}
+function renderOrder(d) {
+  var o = d.order, u = S.boot.user, h = '';
+  h += '<button class="chip" onclick="go(S.tab)">← Back</button>';
+  h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage) + '</div>' +
+    '<div class="muted" style="margin-top:4px">' + esc(o.OrderID) + ' · ' + esc(o.Vertical) + (o.City ? ' · ' + esc(o.City) : '') + '</div>' +
+    '<div style="margin-top:6px">' + (o.CapacityKW ? esc(o.CapacityKW) + ' kW' : 'Capacity not set') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.Subsidy === 'Yes' ? ' · Subsidy' : '') + '</div>' +
+    progress(o.Stage) +
+    (o.Mobile ? '<div class="two"><a class="btn sec" style="text-align:center;text-decoration:none" href="tel:' + esc(o.Mobile) + '">Call</a><a class="btn sec" style="text-align:center;text-decoration:none" target="_blank" href="https://wa.me/91' + esc(String(o.Mobile).replace(/\D/g, '').slice(-10)) + '">WhatsApp</a></div>' : '') + '</div>';
+
+  // open tasks
+  d.tasks.filter(function (t) { return t.Status === 'Open'; }).forEach(function (t) {
+    var s = S.boot.stages.filter(function (x) { return x.code === t.Stage; })[0] || {fields: [], req: []};
+    h += '<div class="card" id="tb_' + t.TaskID + '"><div class="row"><b>Now: ' + esc(t.Title) + '</b>' + (t.Overdue ? '<span class="badge red">Overdue</span>' : '') + '</div>' +
+      '<div class="muted">' + esc(t.OwnerName || ('Team: ' + (S.boot.roles[t.OwnerRole] || t.OwnerRole))) + ' · ' + due(t.DueAt) + '</div>';
+    if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? ' Director has approved supply.' : '') + '</div>';
+    if (t.canAct) {
+      s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
+      if (d.gate && u.director && o.DirectorApproval !== 'Approved') h += '<button class="btn green" onclick="approveGate()">Approve supply (Director)</button>';
+      h += '<label>Note (optional)</label><input id="tn_' + t.TaskID + '">';
+      h += '<div class="two">' + (s.fields.length ? '<button class="btn sec" onclick="saveTask(\'' + t.TaskID + '\')">Save</button>' : '') + '<button class="btn green" onclick="doneTask(\'' + t.TaskID + '\', this)">Done → next stage</button></div>';
+      if (u.mgr) h += '<details><summary>Reassign</summary><select id="ra_' + t.TaskID + '"><option value="">Whole team</option>' + peopleFor(t.OwnerRole, o.Vertical).map(function (p) { return '<option' + (p === t.OwnerName ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select><button class="btn sec" onclick="reassign(\'' + t.TaskID + '\')">Reassign</button></details>';
+    } else {
+      h += '<div class="muted" style="margin-top:6px">Waiting on ' + esc(t.OwnerName || S.boot.roles[t.OwnerRole]) + '.</div>';
+    }
+    h += '</div>';
+  });
+
+  // payments
+  h += '<div class="st">Payments</div><div class="card"><div class="kv"><div class="k">Order value</div><div>' + inr(o.OrderValue) + '</div><div class="k">Received</div><div>' + inr(d.received) + '</div><div class="k">Balance</div><div><b>' + inr(d.balance) + '</b></div></div>';
+  d.payments.forEach(function (p) { h += '<div class="act">' + esc(p.Date) + ' · ' + esc(p.Type) + ' · <b>' + inr(p.Amount) + '</b>' + (p.Mode ? ' · ' + esc(p.Mode) : '') + (p.Reference ? '<div class="muted">' + esc(p.Reference) + '</div>' : '') + '</div>'; });
+  h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + S.boot.payTypes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
+    '<label>Amount (Rs)</label><input id="py_amt" type="number" inputmode="decimal"><label>Date</label><input id="py_date" type="date" value="' + new Date().toISOString().slice(0, 10) + '">' +
+    '<label>Mode</label><select id="py_mode">' + S.boot.payModes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Reference / UTR (optional)</label><input id="py_ref">' +
+    '<button class="btn" onclick="addPay()">Save payment</button></details></div>';
+
+  // details
+  h += '<div class="st">Customer and order details</div><div class="card"><div id="detv" class="kv">';
+  Object.keys(S.boot.fields).forEach(function (k) { if (o[k] !== '' && o[k] !== null && o[k] !== undefined) h += '<div class="k">' + esc(S.boot.fields[k].l) + '</div><div>' + (k === 'OrderValue' || k === 'LoanAmount' ? inr(o[k]) : esc(o[k])) + '</div>'; });
+  h += '</div><details id="detbox"><summary>Edit details</summary>';
+  Object.keys(S.boot.fields).forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
+  h += '<button class="btn" onclick="saveDetails()">Save details</button></details></div>';
+
+  // manager actions
+  if (u.mgr && o.Status === 'Active') {
+    h += '<div class="st">Head / Director actions</div><div class="card"><label>Move to stage</label><select id="mv">' + S.boot.stages.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select>' +
+      '<label>Reason</label><input id="mvn"><button class="btn sec" onclick="moveStage()">Move stage</button>' +
+      '<label>Cancel order — reason</label><input id="cn"><button class="btn red" onclick="cancelOrder()">Cancel order</button></div>';
+  }
+
+  // activity
+  h += '<div class="st">History</div><div class="card">' + (d.activity.length ? d.activity.map(function (a) { return '<div class="act"><span class="muted">' + esc(a.Time) + ' · ' + esc(a.User) + '</span><br>' + esc(a.Action) + ': ' + esc(a.Detail) + '</div>'; }).join('') : '<span class="muted">No history yet.</span>') + '</div>';
+  set(h);
+  S.curOrder = d;
+}
+function busy(btn) { if (btn) { btn.disabled = true; } }
+function saveTask(tid) {
+  call('saveOrder', {id: S.cur, values: collect('tb_' + tid)}, function (r) { toast(r.changed ? 'Saved.' : 'No changes.'); openOrder(S.cur); });
+}
+function doneTask(tid, el) {
+  busy(el);
+  call('completeTask', {taskId: tid, values: collect('tb_' + tid), note: $('tn_' + tid) ? $('tn_' + tid).value : ''}, function (r) { toast('Done. Now at ' + r.stage + '.'); openOrder(S.cur); }, function () { if (el) el.disabled = false; });
+}
+function approveGate() { call('saveOrder', {id: S.cur, values: {DirectorApproval: 'Approved'}}, function () { toast('Supply approved.'); openOrder(S.cur); }); }
+function reassign(tid) { call('reassign', {taskId: tid, ownerName: $('ra_' + tid).value}, function () { toast('Reassigned.'); openOrder(S.cur); }); }
+function addPay() {
+  call('addPayment', {id: S.cur, type: $('py_type').value, amount: $('py_amt').value, date: $('py_date').value, mode: $('py_mode').value, ref: $('py_ref').value}, function () { toast('Payment saved.'); openOrder(S.cur); });
+}
+function saveDetails() { call('saveOrder', {id: S.cur, values: collect('detbox')}, function (r) { toast(r.changed ? 'Saved ' + r.changed + ' change(s).' : 'No changes.'); openOrder(S.cur); }); }
+function moveStage() { if (!$('mvn').value) { toast('Give a reason.'); return; } call('setStage', {id: S.cur, stage: $('mv').value, note: $('mvn').value}, function () { toast('Stage moved.'); openOrder(S.cur); }); }
+function cancelOrder() { if (!$('cn').value) { toast('Give a reason.'); return; } if (!confirmBox('Cancel this order?')) return; call('cancelOrder', {id: S.cur, reason: $('cn').value}, function () { toast('Order cancelled.'); go('cust'); }); }
+function confirmBox(m) { try { return window.confirm(m); } catch (e) { return true; } }
+
+// ---------------------------------------------------------------- new lead
+function newLead() {
+  var vs = S.boot.verticals, u = S.boot.user;
+  var h = '<div class="h">New lead</div><div class="card" id="lf">';
+  h += '<label>Vertical</label><select id="l_v" onchange="leadPeople()">' + vs.map(function (v) { return '<option value="' + v.id + '">' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
+  h += '<label>Customer name *</label><input id="l_name"><label>Mobile *</label><input id="l_mob" type="tel" inputmode="tel">';
+  h += '<label>City / village</label><input id="l_city"><label>Address</label><textarea id="l_addr"></textarea>';
+  h += '<label>Expected capacity (kW)</label><input id="l_kw" type="number" inputmode="decimal">';
+  h += '<label>Lead source</label><select id="l_src">' + S.boot.fields.LeadSource.o.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>';
+  h += '<label>Sales executive</label><select id="l_se"></select>';
+  h += '<label>Remark</label><input id="l_note"><button class="btn" id="l_btn" onclick="saveLead(false)">Save lead</button></div>';
+  set(h); leadPeople();
+}
+function leadPeople() {
+  var v = $('l_v').value, list = peopleFor('SALES', v), me = S.boot.user;
+  $('l_se').innerHTML = '<option value="">— coordinator will assign —</option>' + list.map(function (p) { return '<option' + (p === me.name ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('');
+}
+function saveLead(force) {
+  var b = $('l_btn'); b.disabled = true;
+  call('createLead', {Vertical: $('l_v').value, CustomerName: $('l_name').value, Mobile: $('l_mob').value, City: $('l_city').value, Address: $('l_addr').value, CapacityKW: $('l_kw').value, LeadSource: $('l_src').value, SalesExec: $('l_se').value, NextAction: $('l_note').value, force: force}, function (d) {
+    b.disabled = false;
+    if (d.duplicate) {
+      if (confirmBox(d.duplicate.CustomerName + ' with this mobile is already active at ' + d.duplicate.Stage + '. Create a new lead anyway?')) saveLead(true); else openOrder(d.duplicate.OrderID);
+      return;
+    }
+    toast('Lead saved.'); openOrder(d.id);
+  }, function () { b.disabled = false; });
+}
+
+// ---------------------------------------------------------------- dashboard
+function dashboard() {
+  loading();
+  call('dashboard', {}, function (d) {
+    var t = d.total, h = '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
+    h += '<div class="tiles">' + [['Active orders', t.active], ['Booked this month', t.booked + ' · ' + t.bookedKW.toFixed(1) + ' kW'], ['Booking value', lakh(t.bookedValue)], ['Installed this month', t.installs + ' · ' + t.installsKW.toFixed(1) + ' kW'],
+      ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    h += '<div class="st">By vertical (this month)</div><div class="tbl"><table><tr><th>Vertical</th><th>Active</th><th>Leads</th><th>Booked</th><th>kW</th><th>Value</th><th>Installed</th><th>Collected</th><th>Balance</th><th>Overdue</th></tr>';
+    d.verticals.forEach(function (v) { h += '<tr><td>' + esc(v.name) + '</td><td>' + v.active + '</td><td>' + v.leads + '</td><td>' + v.booked + '</td><td>' + v.bookedKW.toFixed(1) + '</td><td>' + lakh(v.bookedValue) + '</td><td>' + v.installs + '</td><td>' + lakh(v.collected) + '</td><td>' + lakh(v.balance) + '</td><td>' + (v.overdue ? '<b style="color:#C62828">' + v.overdue + '</b>' : 0) + '</td></tr>'; });
+    h += '</table></div>';
+    h += '<div class="st">Pipeline by stage</div><div class="tbl"><table><tr><th>Stage</th><th>Orders</th><th>Value</th><th>Avg days</th><th>Oldest</th><th>Overdue</th></tr>';
+    d.stages.forEach(function (s) { h += '<tr class="item" onclick="S.stage=\'' + s.code + '\';go(\'cust\')"><td>' + esc(s.code) + '</td><td>' + s.count + '</td><td>' + lakh(s.value) + '</td><td>' + s.avgDays + '</td><td>' + s.maxDays + '</td><td>' + (s.overdue ? '<b style="color:#C62828">' + s.overdue + '</b>' : 0) + '</td></tr>'; });
+    h += '</table></div>';
+    h += '<div class="st">Pending work by person</div><div class="tbl"><table><tr><th>Person / team</th><th>Open</th><th>Overdue</th></tr>';
+    d.people.forEach(function (p) { h += '<tr><td>' + esc(p.name) + '</td><td>' + p.open + '</td><td>' + (p.overdue ? '<b style="color:#C62828">' + p.overdue + '</b>' : 0) + '</td></tr>'; });
+    h += '</table></div>';
+    set(h);
+  });
+}
+
+// ---------------------------------------------------------------- admin
+function admin() {
+  loading();
+  call('users', {}, function (d) {
+    S.adm = d;
+    var h = '<div class="row"><div class="h">Users · ' + d.users.length + '</div><button class="chip" onclick="editUser(null)">+ Add user</button></div>';
+    d.users.forEach(function (x, i) {
+      h += '<div class="card item" onclick="editUser(' + i + ')"><div class="row"><div class="name">' + esc(x.Name) + '</div>' + (x.Active === 'Yes' ? '' : '<span class="badge red">Inactive</span>') + (x.MustChangePin === 'Yes' ? ' <span class="badge amber">Not logged in yet</span>' : '') + '</div>' +
+        '<div class="muted">Login: ' + esc(x.LoginID) + ' · ' + esc(String(x.Roles).split(',').map(function (r) { return S.boot.roles[r] || r; }).join(', ')) + '</div><div class="muted">Verticals: ' + esc(x.Verticals) + '</div></div>';
+    });
+    set(h);
+  });
+}
+function editUser(i) {
+  var x = i === null ? {Roles: '', Verticals: '', Active: 'Yes'} : S.adm.users[i];
+  var roles = String(x.Roles).split(','), verts = String(x.Verticals).split(',');
+  var h = '<button class="chip" onclick="admin()">← Users</button><div class="card" style="margin-top:10px"><div class="h">' + (i === null ? 'Add user' : 'Edit ' + esc(x.Name)) + '</div>';
+  h += '<label>Name (as used in assignments)</label><input id="u_name" value="' + esc(x.Name || '') + '"><label>Login ID</label><input id="u_login" autocapitalize="none" value="' + esc(x.LoginID || '') + '">';
+  h += '<label>Mobile</label><input id="u_mob" type="tel" value="' + esc(x.Mobile || '') + '"><label>Email</label><input id="u_mail" value="' + esc(x.Email || '') + '">';
+  h += '<label>Roles</label>' + Object.keys(S.boot.roles).map(function (r) { return '<label class="chk"><input type="checkbox" class="u_r" value="' + r + '"' + (roles.indexOf(r) > -1 ? ' checked' : '') + '> ' + esc(S.boot.roles[r]) + '</label>'; }).join('');
+  h += '<label>Verticals this person can see</label><label class="chk"><input type="checkbox" class="u_v" value="ALL"' + (verts.indexOf('ALL') > -1 ? ' checked' : '') + '> ALL verticals</label>' + S.adm.verticals.map(function (v) { return '<label class="chk"><input type="checkbox" class="u_v" value="' + v.id + '"' + (verts.indexOf(v.id) > -1 ? ' checked' : '') + '> ' + esc(v.id + ' ' + v.name) + '</label>'; }).join('');
+  h += '<label>Status</label><select id="u_act"><option' + (x.Active === 'Yes' ? ' selected' : '') + '>Yes</option><option' + (x.Active === 'No' ? ' selected' : '') + '>No</option></select>';
+  h += '<button class="btn" onclick="saveUser(' + (i === null ? 'null' : '\'' + x.UserID + '\'') + ')">Save user</button>';
+  if (i !== null) h += '<button class="btn sec" onclick="resetPin(\'' + x.UserID + '\')">Reset PIN</button>';
+  h += '</div>';
+  set(h);
+}
+function checked(cls) { var a = [], els = document.querySelectorAll('.' + cls); for (var i = 0; i < els.length; i++) if (els[i].checked) a.push(els[i].value); return a; }
+function saveUser(uid) {
+  call('saveUser', {UserID: uid, Name: $('u_name').value, LoginID: $('u_login').value, Mobile: $('u_mob').value, Email: $('u_mail').value, Roles: checked('u_r'), Verticals: checked('u_v'), Active: $('u_act').value}, function (r) {
+    if (r.tempPin) set('<div class="card"><div class="h">User created</div><div>Login ID: <b>' + esc($('u_login').value.toLowerCase()) + '</b></div><div>Temporary PIN: <b style="font-size:22px">' + r.tempPin + '</b></div><div class="muted">Share these privately. They will set their own PIN at first login.</div><button class="btn" onclick="admin()">Done</button></div>');
+    else { toast('Saved.'); admin(); }
+  });
+}
+function resetPin(uid) {
+  call('resetPin', {UserID: uid}, function (r) { set('<div class="card"><div class="h">PIN reset</div><div>Temporary PIN: <b style="font-size:22px">' + r.tempPin + '</b></div><div class="muted">Share it privately. They must set a new PIN at login.</div><button class="btn" onclick="admin()">Done</button></div>'); });
+}
+
+// ---------------------------------------------------------------- go
+S.token = store('tok');
+if (S.token) start(); else showLogin();
+</script>
+</body>
+</html>
