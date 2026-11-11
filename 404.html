@@ -180,7 +180,12 @@ function work() {
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
     h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
     if (over) h += '<div class="note bad">' + over + ' task' + (over > 1 ? 's are' : ' is') + ' overdue.</div>';
-    if (!d.tasks.length && !(d.follow || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if ((d.approvals || []).length) {
+      h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
+      d.approvals.forEach(function (r) { h += reqCard(r, true); });
+      if (d.tasks.length || (d.follow || []).length) h += '<div class="st">&nbsp;</div>';
+    }
     if ((d.follow || []).length) {
       h += '<div class="st">Retailer follow-ups due · ' + d.follow.length + '</div>';
       d.follow.forEach(function (r) {
@@ -601,6 +606,7 @@ function stock() {
     var outInv = d.items.filter(function (i) { return i.Category === 'Inverter'; }).reduce(function (a, i) { return a + i.OutMonth; }, 0);
     h += '<div class="tiles" style="margin-top:10px">' + [['Inverters (kits) in stock', inv], ['Panels in stock', pan], ['Kits dispatched this month', outInv], ['Pending dispatch', d.pending.length]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
     if (d.canMove) h += '<div class="two"><button class="btn" onclick="moveForm(\'Out - Retail (B2B)\')">Dispatch / stock out</button><button class="btn green" onclick="moveForm(\'In - Supply\')">Stock in</button></div><div class="two"><button class="btn sec" onclick="moveForm(\'Transfer out\')">Transfer</button><button class="btn sec" onclick="moveForm(\'Adjustment +\')">Adjust</button></div>';
+    if ((d.requests || []).length) h += '<div class="st">Stock entries sent for approval</div>' + d.requests.map(function (r) { return reqCard(r, false); }).join('');
     if (d.pending.length) h += '<div class="st">Waiting for dispatch</div>' + d.pending.map(function (p) { return '<div class="card"><div class="row"><b>' + esc(p.name) + '</b><span class="badge">' + p.kind + '</span></div><div class="muted">' + esc(p.kits || '') + (p.invoice ? ' · Inv ' + esc(p.invoice) : '') + '</div>' + (d.canMove ? '<button class="btn sec" onclick="dispatchFor(\'' + p.id + '\')">Record dispatch</button>' : '') + '</div>'; }).join('');
     var cats = []; d.items.forEach(function (i) { if (cats.indexOf(i.Category) < 0) cats.push(i.Category); });
     h += '<div class="st">Stock in hand</div><div class="chips">' + cats.map(function (c) { return '<span class="chip ' + (S.cat === c ? 'on' : '') + '" onclick="S.cat=\'' + c + '\';stock()">' + esc(c) + '</span>'; }).join('') + '<span class="chip ' + (S.cat === 'all' ? 'on' : '') + '" onclick="S.cat=\'all\';stock()">All</span></div>';
@@ -620,7 +626,7 @@ function moveForm(type, ref) {
   h += '<label>Type</label><select id="mv_type" onchange="mvType()">' + S.boot.moveTypes.map(function (t) { return '<option' + (t === type ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>';
   h += '<div id="mv_to" style="display:none"><label>Send to warehouse</label><select id="mv_tow">' + d.allWarehouses.filter(function (w) { return w.id !== d.warehouse.id; }).map(function (w) { return '<option value="' + w.id + '">' + esc(w.name) + '</option>'; }).join('') + '</select></div>';
   h += '<label>Date</label><input id="mv_date" type="date" value="' + new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10) + '">';
-  h += '<label>For order (optional)</label><select id="mv_ref"><option value="">—</option>' + d.pending.map(function (p) { return '<option value="' + p.id + '"' + (p.id === ref2.id ? ' selected' : '') + '>' + esc(p.kind + ': ' + p.name + (p.kits ? ' (' + p.kits + ')' : '')) + '</option>'; }).join('') + (ref2.id && !d.pending.some(function (p) { return p.id === ref2.id; }) ? '<option value="' + esc(ref2.id) + '" selected>' + esc(ref2.id) + '</option>' : '') + '</select>';
+  h += '<label>For order (optional)</label><select id="mv_ref" onchange="mvType()"><option value="">—</option>' + d.pending.map(function (p) { return '<option value="' + p.id + '"' + (p.id === ref2.id ? ' selected' : '') + '>' + esc(p.kind + ': ' + p.name + (p.kits ? ' (' + p.kits + ')' : '')) + '</option>'; }).join('') + (ref2.id && !d.pending.some(function (p) { return p.id === ref2.id; }) ? '<option value="' + esc(ref2.id) + '" selected>' + esc(ref2.id) + '</option>' : '') + '</select>';
   h += '<label id="mv_pl">Party (retailer / customer / supplier)</label><input id="mv_party" value="' + esc(ref2.name || '') + '"><label>Invoice no. (MyBillbook or supplier)</label><input id="mv_inv" value="' + esc(ref2.invoice || '') + '">';
   h += '<label>Quantities</label><div class="muted">Enter only the items moving. Current stock shown on the right.</div>';
   var cats = []; d.items.forEach(function (i) { if (cats.indexOf(i.Category) < 0) cats.push(i.Category); });
@@ -632,19 +638,35 @@ function moveForm(type, ref) {
   var zero = d.items.filter(function (i) { return i.Qty === 0; });
   if (zero.length) h += '<details><summary>Items with zero stock (' + zero.length + ')</summary>' + zero.map(row).join('') + '</details>';
   h += '<label>Serial numbers (panels / inverter, for warranty)</label><textarea id="mv_ser" placeholder="One per line or comma separated"></textarea><label>Note</label><input id="mv_note">';
-  h += '<button class="btn" id="mv_btn" onclick="saveMove()">Save entry</button></div>';
+  h += '<div class="note" id="mv_hint" style="display:none">This entry needs approval before stock changes (unless you are the approver).</div><button class="btn" id="mv_btn" onclick="saveMove()">Save entry</button></div>';
   set(h); mvType();
 }
-function mvType() { var t = $('mv_type').value; $('mv_to').style.display = t === 'Transfer out' ? 'block' : 'none'; $('mv_pl').textContent = t === 'In - Supply' ? 'Supplier (e.g. Tata Power)' : 'Party (retailer / customer)'; }
+function mvType() { var t = $('mv_type').value; var hint = $('mv_hint'); if (hint) hint.style.display = (t === 'In - Supply' || (t === 'Out - Retail (B2B)' && /^RO/.test($('mv_ref').value))) ? 'none' : 'block'; $('mv_to').style.display = t === 'Transfer out' ? 'block' : 'none'; $('mv_pl').textContent = t === 'In - Supply' ? 'Supplier (e.g. Tata Power)' : 'Party (retailer / customer)'; }
 function saveMove() {
   var lines = [], ins = document.querySelectorAll('#mf input[data-item]');
   for (var i = 0; i < ins.length; i++) if (Number(ins[i].value) > 0) lines.push({itemId: ins[i].getAttribute('data-item'), qty: ins[i].value});
   var b = $('mv_btn'); busy(b);
   call('saveMove', {wh: S.stk.warehouse.id, type: $('mv_type').value, toWh: $('mv_tow').value, date: $('mv_date').value, refId: $('mv_ref').value, party: $('mv_party').value, invoiceNo: $('mv_inv').value, serials: $('mv_ser').value, note: $('mv_note').value, lines: lines}, function (r) {
-    toast('Saved ' + r.lines + ' line(s).');
+    toast(r.pending ? 'Sent to ' + r.approver + ' for approval. Stock changes once approved.' : 'Saved ' + r.lines + ' line(s).');
     var ref = $('mv_ref').value;
     if (ref) openOrder(ref); else stock();
   }, function () { b.disabled = false; });
+}
+function reqCard(r, act) {
+  var col = r.status === 'Pending' ? 'amber' : (r.status === 'Approved' ? 'green' : 'red');
+  var h = '<div class="card" id="rq_' + r.id + '"><div class="row"><b>' + esc(r.type) + '</b><span class="badge ' + col + '">' + esc(r.status === 'Pending' ? 'Waiting: ' + r.approver : r.status) + '</span></div>' +
+    '<div class="muted">' + esc(r.wh) + (r.to ? ' → ' + esc(r.to) : '') + ' · ' + esc(r.date) + (r.party ? ' · ' + esc(r.party) : '') + (r.invoice ? ' · Inv ' + esc(r.invoice) : '') + (r.ref ? ' · ' + esc(r.ref) : '') + '</div>' +
+    r.lines.map(function (l) { return '<div class="ln"><span class="nm">' + esc(l.item) + (l.stock !== null && l.stock !== undefined ? ' <span class="muted">(stock ' + l.stock + ')</span>' : '') + '</span><b class="' + (l.qty < 0 ? 'neg' : '') + '">' + (l.qty > 0 ? '+' : '') + l.qty + '</b></div>'; }).join('') +
+    (r.note ? '<div class="muted">Note: ' + esc(r.note) + '</div>' : '') + '<div class="muted">Entered by ' + esc(r.by) + ' · ' + esc(r.at) + '</div>' +
+    (r.status !== 'Pending' ? '<div class="muted">' + esc(r.status) + ' by ' + esc(r.decidedBy) + ' · ' + esc(r.decidedAt) + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' : '');
+  if (act && r.canDecide) h += '<input id="rr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decide(\'' + r.id + '\',true,this)">Approve</button><button class="btn sec" onclick="decide(\'' + r.id + '\',false,this)">Reject</button></div>';
+  return h + '</div>';
+}
+function decide(id, ok, b) {
+  var reason = ($('rr_' + id) || {}).value || '';
+  if (!ok && !reason.trim()) { toast('Write the reason for rejecting.'); return; }
+  busy(b);
+  call('decideMove', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Approved. Stock updated.' : 'Rejected.'); work(); }, function () { b.disabled = false; });
 }
 function moveHistory() {
   var d = S.stk;
