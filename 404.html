@@ -299,7 +299,8 @@ function renderOrder(d) {
     h += '<div class="card" id="tb_' + t.TaskID + '"><div class="row"><b>Now: ' + esc(t.Title) + '</b>' + (t.Overdue ? '<span class="badge red">Overdue</span>' : '') + '</div>' +
       '<div class="muted">' + esc(t.OwnerName || ('Team: ' + (S.boot.roles[t.OwnerRole] || t.OwnerRole))) + ' · ' + due(t.DueAt) + '</div>';
     if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? ' Director has approved supply.' : '') + '</div>';
-    if (R && t.Stage === 'R6 Dispatch') h += '<div class="note">' + (d.moves.length ? 'Stock out recorded: ' + d.moves.length + ' line(s).' : 'First record the stock out from the warehouse.') + '</div><button class="btn sec" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>';
+    if (R && t.Stage === 'R6 Dispatch') { var sq = (d.stockReqs || []).filter(function (x) { return x.status === 'Pending'; })[0], rj = (d.stockReqs || []).filter(function (x) { return x.status === 'Rejected'; }).pop(); h += '<div class="note' + (sq ? '' : (rj && !d.moves.length ? ' bad' : '')) + '">' + (d.moves.length ? 'Stock out approved and recorded: ' + d.moves.length + ' line(s). Now enter the dispatch date and complete.' : sq ? 'Stock out sent by ' + esc(sq.by) + ' is waiting for ' + esc(sq.approver) + "'s approval." : rj ? 'Stock out was rejected by ' + esc(rj.decidedBy) + ': ' + esc(rj.reason) + '. Record it again.' : 'First record the stock out from the warehouse. It needs approval before dispatch.') + '</div>'; }
+    if (R && t.Stage === 'R6 Dispatch' && !(d.stockReqs || []).some(function (x) { return x.status === 'Pending'; })) h += '<button class="btn sec" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>';
     if (t.canAct) {
       s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
       if (d.gate && u.director && o.DirectorApproval !== 'Approved') h += '<button class="btn green" onclick="approveGate()">Approve supply (Director)</button>';
@@ -605,7 +606,7 @@ function stock() {
     var inv = d.items.filter(function (i) { return i.Category === 'Inverter'; }).reduce(function (a, i) { return a + i.Qty; }, 0), pan = d.items.filter(function (i) { return i.Category === 'Panel'; }).reduce(function (a, i) { return a + i.Qty; }, 0);
     var outInv = d.items.filter(function (i) { return i.Category === 'Inverter'; }).reduce(function (a, i) { return a + i.OutMonth; }, 0);
     h += '<div class="tiles" style="margin-top:10px">' + [['Inverters (kits) in stock', inv], ['Panels in stock', pan], ['Kits dispatched this month', outInv], ['Pending dispatch', d.pending.length]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
-    if (d.canMove) h += '<div class="two"><button class="btn" onclick="moveForm(\'Out - Retail (B2B)\')">Dispatch / stock out</button><button class="btn green" onclick="moveForm(\'In - Supply\')">Stock in</button></div><div class="two"><button class="btn sec" onclick="moveForm(\'Transfer out\')">Transfer</button><button class="btn sec" onclick="moveForm(\'Adjustment +\')">Adjust</button></div>';
+    if (d.canMove) h += '<div class="two"><button class="btn" onclick="moveForm(\'Out - Retail Partner\')">Dispatch / stock out</button><button class="btn green" onclick="moveForm(\'In - Supply\')">Stock in</button></div><div class="two"><button class="btn sec" onclick="moveForm(\'Transfer out\')">Transfer</button><button class="btn sec" onclick="moveForm(\'Adjustment +\')">Adjust</button></div>';
     if ((d.requests || []).length) h += '<div class="st">Stock entries sent for approval</div>' + d.requests.map(function (r) { return reqCard(r, false); }).join('');
     if (d.pending.length) h += '<div class="st">Waiting for dispatch</div>' + d.pending.map(function (p) { return '<div class="card"><div class="row"><b>' + esc(p.name) + '</b><span class="badge">' + p.kind + '</span></div><div class="muted">' + esc(p.kits || '') + (p.invoice ? ' · Inv ' + esc(p.invoice) : '') + '</div>' + (d.canMove ? '<button class="btn sec" onclick="dispatchFor(\'' + p.id + '\')">Record dispatch</button>' : '') + '</div>'; }).join('');
     var cats = []; d.items.forEach(function (i) { if (cats.indexOf(i.Category) < 0) cats.push(i.Category); });
@@ -617,7 +618,7 @@ function stock() {
   });
 }
 function dispatchFor(id) {
-  var go3 = function () { var p = (S.stk.pending || []).filter(function (x) { return x.id === id; })[0] || {id: id, name: '', invoice: '', kind: id.indexOf('RO') === 0 ? 'Retail' : 'EPC'}; moveForm(p.kind === 'Retail' ? 'Out - Retail (B2B)' : 'Out - EPC customer', p); };
+  var go3 = function () { var p = (S.stk.pending || []).filter(function (x) { return x.id === id; })[0] || {id: id, name: '', invoice: '', kind: id.indexOf('RO') === 0 ? 'Retail' : 'EPC'}; moveForm(p.kind === 'Retail' ? 'Out - Retail Partner' : 'Out - EPC customer', p); };
   if (S.stk && S.tab === 'stock') go3(); else { S.tab = 'stock'; call('stock', {wh: S.ctx && S.ctx.order && S.ctx.order.Warehouse || S.wh}, function (d) { S.stk = d; S.wh = d.warehouse.id; go3(); }); }
 }
 function moveForm(type, ref) {
@@ -641,7 +642,7 @@ function moveForm(type, ref) {
   h += '<div class="note" id="mv_hint" style="display:none">This entry needs approval before stock changes (unless you are the approver).</div><button class="btn" id="mv_btn" onclick="saveMove()">Save entry</button></div>';
   set(h); mvType();
 }
-function mvType() { var t = $('mv_type').value; var hint = $('mv_hint'); if (hint) hint.style.display = (t === 'In - Supply' || (t === 'Out - Retail (B2B)' && /^RO/.test($('mv_ref').value))) ? 'none' : 'block'; $('mv_to').style.display = t === 'Transfer out' ? 'block' : 'none'; $('mv_pl').textContent = t === 'In - Supply' ? 'Supplier (e.g. Tata Power)' : 'Party (retailer / customer)'; }
+function mvType() { var t = $('mv_type').value; var hint = $('mv_hint'); if (hint) hint.style.display = t === 'In - Supply' ? 'none' : 'block'; $('mv_to').style.display = t === 'Transfer out' ? 'block' : 'none'; $('mv_pl').textContent = t === 'In - Supply' ? 'Supplier (e.g. Tata Power)' : 'Party (retailer / customer)'; }
 function saveMove() {
   var lines = [], ins = document.querySelectorAll('#mf input[data-item]');
   for (var i = 0; i < ins.length; i++) if (Number(ins[i].value) > 0) lines.push({itemId: ins[i].getAttribute('data-item'), qty: ins[i].value});
