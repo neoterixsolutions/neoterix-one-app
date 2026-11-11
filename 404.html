@@ -53,6 +53,12 @@ table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:8px 8px;
 .logo{font-size:24px;font-weight:800;color:var(--b);text-align:center;margin-bottom:4px}
 .act{font-size:13px;border-bottom:1px solid var(--line);padding:7px 0} .act:last-child{border:0}
 details summary{cursor:pointer;color:var(--a);font-weight:600;padding:6px 0}
+nav button{font-size:10px} nav .i{font-size:18px}
+.kitg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px} .kitg div{background:#F3F5F9;border-radius:8px;padding:6px} .kitg span{font-size:12px;color:var(--m)} .kitg input{padding:7px;margin-top:2px}
+.b0{background:#E7F4EA;color:var(--g)} .b1{background:#FFF3E0;color:var(--y)} .b2{background:#FDECEC;color:var(--r)} .bn{background:#EEE;color:#555}
+.qty{width:90px;text-align:right} .neg{color:var(--r);font-weight:700}
+.ln{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)} .ln:last-child{border:0} .ln .nm{flex:1;font-size:14px}
+select.sm{width:auto;padding:7px;font-size:13px}
 </style>
 </head>
 <body>
@@ -134,8 +140,13 @@ function start() {
     renderNav(); go(S.tab);
   });
 }
+function hasLine(retail) { return S.boot.verticals.some(function (v) { return retail ? v.line === 'Retail' : v.line !== 'Retail'; }); }
 function renderNav() {
-  var u = S.boot.user, tabs = [['work', '✓', 'My work'], ['cust', '☰', 'Customers'], ['lead', '+', 'New lead']];
+  var u = S.boot.user, tabs = [['work', '✓', 'My work']];
+  if (hasLine(false)) tabs.push(['cust', '☰', 'Customers']);
+  if (hasLine(true)) tabs.push(['retail', '◆', 'Retail']);
+  if (S.boot.warehouses.length) tabs.push(['stock', '▤', 'Stock']);
+  tabs.push(['lead', '+', 'New']);
   if (u.mgr) tabs.push(['dash', '▦', 'Dashboard']);
   if (u.admin) tabs.push(['admin', '⚙', 'Users']);
   $('nav').innerHTML = tabs.map(function (t) { return '<button id="nb_' + t[0] + '" onclick="go(\'' + t[0] + '\')"><span class="i">' + t[1] + '</span>' + t[2] + '</button>'; }).join('');
@@ -145,7 +156,9 @@ function go(tab) {
   S.tab = tab;
   var bs = document.querySelectorAll('nav button'); for (var i = 0; i < bs.length; i++) bs[i].className = '';
   if ($('nb_' + tab)) $('nb_' + tab).className = 'on';
+  S.F = null; S.ST = null;
   if (tab === 'work') work(); else if (tab === 'cust') customers(); else if (tab === 'lead') newLead(); else if (tab === 'dash') dashboard(); else if (tab === 'admin') admin();
+  else if (tab === 'retail') retail(); else if (tab === 'stock') stock();
 }
 function stageBadge(stage, overdue) {
   var cls = stage === 'Closed - Complete' ? 'green' : (stage === 'Cancelled' ? 'red' : '');
@@ -167,12 +180,20 @@ function work() {
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
     h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
     if (over) h += '<div class="note bad">' + over + ' task' + (over > 1 ? 's are' : ' is') + ' overdue.</div>';
-    if (!d.tasks.length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if (!d.tasks.length && !(d.follow || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if ((d.follow || []).length) {
+      h += '<div class="st">Retailer follow-ups due · ' + d.follow.length + '</div>';
+      d.follow.forEach(function (r) {
+        h += '<div class="card item" onclick="openRetailer(\'' + r.RetailerID + '\')"><div class="row"><div class="name">' + esc(r.Name) + '</div><span class="badge amber">Follow up ' + esc(r.NextFollowUp) + '</span></div>' +
+          '<div class="muted">' + esc(r.Area || '') + (r.LastOrder ? ' · last order ' + esc(r.LastOrder) + ' (' + r.Days + ' d)' : ' · no order yet') + (S.scope === 'team' ? ' · ' + esc(r.SalesExec) : '') + '</div>' + (r.FollowUpNote ? '<div class="muted">' + esc(r.FollowUpNote) + '</div>' : '') + '</div>';
+      });
+      if (d.tasks.length) h += '<div class="st">Tasks</div>';
+    }
     d.tasks.forEach(function (t) {
       var o = t.order;
       h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(t.Stage, t.Overdue) + '</div>' +
         '<div style="margin:6px 0">' + esc(t.Title) + '</div>' +
-        '<div class="row muted"><span>' + esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.City ? ' · ' + esc(o.City) : '') + '</span><span>' + due(t.DueAt) + '</span></div>' +
+        '<div class="row muted"><span>' + (o.kind === 'retail' ? 'Retail · ' + esc(o.KitMix || '') : esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.City ? ' · ' + esc(o.City) : '')) + '</span><span>' + due(t.DueAt) + '</span></div>' +
         (S.scope === 'team' ? '<div class="muted">Owner: ' + esc(t.OwnerName) + '</div>' : '') + '</div>';
     });
     set(h);
@@ -204,10 +225,25 @@ function loadList() {
 function peopleFor(role, vert) {
   return S.boot.people.filter(function (p) { return p.roles.indexOf(role) > -1 && (p.verts.indexOf(vert) > -1 || p.verts.indexOf('ALL') > -1); }).map(function (p) { return p.name; });
 }
+function kitGrid(id, mix) {
+  var have = {};
+  String(mix || '').split(',').forEach(function (p) { var m = p.trim().match(/^(.+?)\s*x\s*([0-9.]+)$/); if (m) have[m[1].trim()] = m[2]; });
+  return '<div class="kitg" data-kits="' + id + '">' + S.boot.kitSizes.map(function (k) { return '<div><span>' + esc(k) + '</span><input type="number" inputmode="numeric" min="0" data-size="' + esc(k) + '" value="' + esc(have[k] || '') + '" placeholder="0"></div>'; }).join('') + '</div>';
+}
+function kitMixFrom(el) {
+  var a = [], ins = el.querySelectorAll('input[data-size]');
+  for (var i = 0; i < ins.length; i++) { var q = Number(ins[i].value || 0); if (q > 0) a.push(ins[i].getAttribute('data-size') + ' x' + q); }
+  return a.join(', ');
+}
 function input(k, v, vert) {
-  var f = S.boot.fields[k]; if (!f) return '';
+  var f = (S.F || S.boot.fields)[k]; if (!f) return '';
   v = v === null || v === undefined ? '' : v;
   var id = 'f_' + k, h = '';
+  if (f.t === 'kits') return '<label>' + esc(f.l) + '</label>' + kitGrid(k, v);
+  if (f.t === 'wh') {
+    var ws = (S.ctx && S.ctx.warehouses) || S.boot.warehouses.filter(function (w) { return w.verts.indexOf(vert) > -1; }).map(function (w) { return {id: w.id, name: w.name + ' (' + w.incharge + ')'}; });
+    return '<label for="' + id + '">' + esc(f.l) + '</label><select id="' + id + '" data-f="' + k + '"><option value="">— choose —</option>' + ws.map(function (w) { return '<option value="' + esc(w.id) + '"' + (w.id === v ? ' selected' : '') + '>' + esc(w.name) + '</option>'; }).join('') + '</select>';
+  }
   if (f.t === 'check') return '<label class="chk"><input type="checkbox" id="' + id + '" data-f="' + k + '"' + (v ? ' checked' : '') + '> ' + esc(f.l) + '</label>';
   h += '<label for="' + id + '">' + esc(f.l) + '</label>';
   if (f.t === 'select' || f.t === 'user') {
@@ -225,21 +261,28 @@ function input(k, v, vert) {
 function collect(boxId) {
   var vals = {}, els = $(boxId).querySelectorAll('[data-f]');
   for (var i = 0; i < els.length; i++) { var e = els[i]; vals[e.getAttribute('data-f')] = e.type === 'checkbox' ? e.checked : e.value; }
+  var ks = $(boxId).querySelectorAll('[data-kits]');
+  for (var j = 0; j < ks.length; j++) vals[ks[j].getAttribute('data-kits')] = kitMixFrom(ks[j]);
   return vals;
 }
 function progress(stage) {
-  var idx = -1; S.boot.stages.forEach(function (s, i) { if (s.code === stage) idx = i; });
-  if (stage === 'Closed - Complete') idx = S.boot.stages.length;
-  return '<div class="prog">' + S.boot.stages.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
+  var ST = S.ST || S.boot.stages, idx = -1; ST.forEach(function (s, i) { if (s.code === stage) idx = i; });
+  if (stage === 'Closed - Complete') idx = ST.length;
+  return '<div class="prog">' + ST.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
 }
 function openOrder(id) {
   S.cur = id; loading();
   call('order', {id: id}, function (d) { renderOrder(d); });
 }
 function renderOrder(d) {
-  var o = d.order, u = S.boot.user, h = '';
+  var o = d.order, u = S.boot.user, h = '', R = d.kind === 'retail';
+  S.F = R ? S.boot.rfields : S.boot.fields; S.ST = R ? S.boot.rstages : S.boot.stages; S.ctx = d;
   h += '<button class="chip" onclick="go(S.tab)">← Back</button>';
-  h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage) + '</div>' +
+  if (R) h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(o.RetailerName) + '</div>' + stageBadge(o.Stage) + '</div>' +
+    '<div class="muted" style="margin-top:4px">Retail order ' + esc(o.OrderID) + ' · ' + esc(o.Vertical) + (o.SalesExec ? ' · ' + esc(o.SalesExec) : '') + '</div>' +
+    '<div style="margin-top:6px"><b>' + esc(o.Kits || 0) + ' kit(s)</b>' + (o.KitMix ? ' · ' + esc(o.KitMix) : '') + (o.PanelType ? ' · ' + esc(o.PanelType) : '') + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</div>' +
+    progress(o.Stage) + '<button class="btn sec" onclick="openRetailer(\'' + o.RetailerID + '\')">Open retailer</button></div>';
+  else h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage) + '</div>' +
     '<div class="muted" style="margin-top:4px">' + esc(o.OrderID) + ' · ' + esc(o.Vertical) + (o.City ? ' · ' + esc(o.City) : '') + '</div>' +
     '<div style="margin-top:6px">' + (o.CapacityKW ? esc(o.CapacityKW) + ' kW' : 'Capacity not set') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.Subsidy === 'Yes' ? ' · Subsidy' : '') + '</div>' +
     progress(o.Stage) +
@@ -247,10 +290,11 @@ function renderOrder(d) {
 
   // open tasks
   d.tasks.filter(function (t) { return t.Status === 'Open'; }).forEach(function (t) {
-    var s = S.boot.stages.filter(function (x) { return x.code === t.Stage; })[0] || {fields: [], req: []};
+    var s = S.ST.filter(function (x) { return x.code === t.Stage; })[0] || {fields: [], req: []};
     h += '<div class="card" id="tb_' + t.TaskID + '"><div class="row"><b>Now: ' + esc(t.Title) + '</b>' + (t.Overdue ? '<span class="badge red">Overdue</span>' : '') + '</div>' +
       '<div class="muted">' + esc(t.OwnerName || ('Team: ' + (S.boot.roles[t.OwnerRole] || t.OwnerRole))) + ' · ' + due(t.DueAt) + '</div>';
     if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? ' Director has approved supply.' : '') + '</div>';
+    if (R && t.Stage === 'R6 Dispatch') h += '<div class="note">' + (d.moves.length ? 'Stock out recorded: ' + d.moves.length + ' line(s).' : 'First record the stock out from the warehouse.') + '</div><button class="btn sec" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>';
     if (t.canAct) {
       s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
       if (d.gate && u.director && o.DirectorApproval !== 'Approved') h += '<button class="btn green" onclick="approveGate()">Approve supply (Director)</button>';
@@ -266,21 +310,26 @@ function renderOrder(d) {
   // payments
   h += '<div class="st">Payments</div><div class="card"><div class="kv"><div class="k">Order value</div><div>' + inr(o.OrderValue) + '</div><div class="k">Received</div><div>' + inr(d.received) + '</div><div class="k">Balance</div><div><b>' + inr(d.balance) + '</b></div></div>';
   d.payments.forEach(function (p) { h += '<div class="act">' + esc(p.Date) + ' · ' + esc(p.Type) + ' · <b>' + inr(p.Amount) + '</b>' + (p.Mode ? ' · ' + esc(p.Mode) : '') + (p.Reference ? '<div class="muted">' + esc(p.Reference) + '</div>' : '') + '</div>'; });
-  h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + S.boot.payTypes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
+  h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + (R ? ['Advance', 'Other'] : S.boot.payTypes).map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
     '<label>Amount (Rs)</label><input id="py_amt" type="number" inputmode="decimal"><label>Date</label><input id="py_date" type="date" value="' + new Date().toISOString().slice(0, 10) + '">' +
     '<label>Mode</label><select id="py_mode">' + S.boot.payModes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Reference / UTR (optional)</label><input id="py_ref">' +
     '<button class="btn" onclick="addPay()">Save payment</button></details></div>';
 
+  // retail: dispatch lines and warranty
+  if (R && d.moves.length) h += '<div class="st">Dispatched material</div><div class="card">' + d.moves.map(function (m) { return '<div class="ln"><span class="nm">' + esc(m.Item) + '<div class="muted">' + esc(m.Date) + ' · ' + esc(m.Warehouse) + (m.Serials ? ' · ' + esc(m.Serials) : '') + '</div></span><b>' + Math.abs(m.Qty) + '</b></div>'; }).join('') + '</div>';
+  if (R) h += '<div class="st">Warranty</div><div class="card">' + (d.warranty ? d.warranty.map(function (w) { return '<div class="ln"><span class="nm">' + esc(w.part) + ' (' + w.years + ' yrs)</span><span class="badge ' + (w.active ? 'green' : 'red') + '">' + (w.active ? 'Valid till ' : 'Expired ') + esc(w.till) + '</span></div>'; }).join('') : '<span class="muted">Starts when the warranty is registered on the Tata app after installation (panels 12 yrs, inverter 8 yrs, structure and workmanship 5 yrs).</span>') + '</div>';
+
   // details
-  h += '<div class="st">Customer and order details</div><div class="card"><div id="detv" class="kv">';
-  Object.keys(S.boot.fields).forEach(function (k) { if (o[k] !== '' && o[k] !== null && o[k] !== undefined) h += '<div class="k">' + esc(S.boot.fields[k].l) + '</div><div>' + (k === 'OrderValue' || k === 'LoanAmount' ? inr(o[k]) : esc(o[k])) + '</div>'; });
+  var F = S.F;
+  h += '<div class="st">' + (R ? 'Order details' : 'Customer and order details') + '</div><div class="card"><div id="detv" class="kv">';
+  Object.keys(F).forEach(function (k) { if (o[k] !== '' && o[k] !== null && o[k] !== undefined) h += '<div class="k">' + esc(F[k].l) + '</div><div>' + (k === 'OrderValue' || k === 'LoanAmount' || k === 'InvoiceValue' ? inr(o[k]) : (R && k === 'Warehouse' ? esc(((d.warehouses || []).filter(function (w) { return w.id === o[k]; })[0] || {name: o[k]}).name) : esc(o[k]))) + '</div>'; });
   h += '</div><details id="detbox"><summary>Edit details</summary>';
-  Object.keys(S.boot.fields).forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
+  Object.keys(F).forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
   h += '<button class="btn" onclick="saveDetails()">Save details</button></details></div>';
 
   // manager actions
   if (u.mgr && o.Status === 'Active') {
-    h += '<div class="st">Head / Director actions</div><div class="card"><label>Move to stage</label><select id="mv">' + S.boot.stages.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select>' +
+    h += '<div class="st">Head / Director actions</div><div class="card"><label>Move to stage</label><select id="mv">' + S.ST.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select>' +
       '<label>Reason</label><input id="mvn"><button class="btn sec" onclick="moveStage()">Move stage</button>' +
       '<label>Cancel order — reason</label><input id="cn"><button class="btn red" onclick="cancelOrder()">Cancel order</button></div>';
   }
@@ -305,21 +354,26 @@ function addPay() {
 }
 function saveDetails() { call('saveOrder', {id: S.cur, values: collect('detbox')}, function (r) { toast(r.changed ? 'Saved ' + r.changed + ' change(s).' : 'No changes.'); openOrder(S.cur); }); }
 function moveStage() { if (!$('mvn').value) { toast('Give a reason.'); return; } call('setStage', {id: S.cur, stage: $('mv').value, note: $('mvn').value}, function () { toast('Stage moved.'); openOrder(S.cur); }); }
-function cancelOrder() { if (!$('cn').value) { toast('Give a reason.'); return; } if (!confirmBox('Cancel this order?')) return; call('cancelOrder', {id: S.cur, reason: $('cn').value}, function () { toast('Order cancelled.'); go('cust'); }); }
+function cancelOrder() { if (!$('cn').value) { toast('Give a reason.'); return; } if (!confirmBox('Cancel this order?')) return; call('cancelOrder', {id: S.cur, reason: $('cn').value}, function () { toast('Order cancelled.'); go(S.tab); }); }
 function confirmBox(m) { try { return window.confirm(m); } catch (e) { return true; } }
 
 // ---------------------------------------------------------------- new lead
 function newLead() {
-  var vs = S.boot.verticals, u = S.boot.user;
-  var h = '<div class="h">New lead</div><div class="card" id="lf">';
-  h += '<label>Vertical</label><select id="l_v" onchange="leadPeople()">' + vs.map(function (v) { return '<option value="' + v.id + '">' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
+  var vs = S.boot.verticals;
+  var h = '<div class="h">New</div><div class="card"><label>Vertical</label><select id="l_v" onchange="leadForm()">' + vs.map(function (v) { return '<option value="' + v.id + '"' + (v.id === S.lastV ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select></div><div id="lfx"></div>';
+  set(h); leadForm();
+}
+function leadForm() {
+  var vid = $('l_v').value; S.lastV = vid;
+  if (S.boot.lines[vid] === 'Retail') return retailOrderForm(vid);
+  var h = '<div class="card" id="lf"><div class="h">New EPC lead</div>';
   h += '<label>Customer name *</label><input id="l_name"><label>Mobile *</label><input id="l_mob" type="tel" inputmode="tel">';
   h += '<label>City / village</label><input id="l_city"><label>Address</label><textarea id="l_addr"></textarea>';
   h += '<label>Expected capacity (kW)</label><input id="l_kw" type="number" inputmode="decimal">';
   h += '<label>Lead source</label><select id="l_src">' + S.boot.fields.LeadSource.o.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>';
   h += '<label>Sales executive</label><select id="l_se"></select>';
   h += '<label>Remark</label><input id="l_note"><button class="btn" id="l_btn" onclick="saveLead(false)">Save lead</button></div>';
-  set(h); leadPeople();
+  $('lfx').innerHTML = h; leadPeople();
 }
 function leadPeople() {
   var v = $('l_v').value, list = peopleFor('SALES', v), me = S.boot.user;
@@ -341,7 +395,7 @@ function saveLead(force) {
 function dashboard() {
   loading();
   call('dashboard', {}, function (d) {
-    var t = d.total, h = '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
+    var t = d.total, h = (hasLine(true) ? '<div class="chips"><span class="chip on">EPC</span><span class="chip" onclick="S.rtab=\'rdash\';go(\'retail\')">Retail</span>' + (S.boot.warehouses.length ? '<span class="chip" onclick="go(\'stock\')">Stock</span>' : '') + '</div>' : '') + '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
     h += '<div class="tiles">' + [['Active orders', t.active], ['Booked this month', t.booked + ' · ' + t.bookedKW.toFixed(1) + ' kW'], ['Booking value', lakh(t.bookedValue)], ['Installed this month', t.installs + ' · ' + t.installsKW.toFixed(1) + ' kW'],
       ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
     h += '<div class="st">By vertical (this month)</div><div class="tbl"><table><tr><th>Vertical</th><th>Active</th><th>Leads</th><th>Booked</th><th>kW</th><th>Value</th><th>Installed</th><th>Collected</th><th>Balance</th><th>Overdue</th></tr>';
@@ -394,6 +448,211 @@ function saveUser(uid) {
 function resetPin(uid) {
   call('resetPin', {UserID: uid}, function (r) { set('<div class="card"><div class="h">PIN reset</div><div>Temporary PIN: <b style="font-size:22px">' + r.tempPin + '</b></div><div class="muted">Share it privately. They must set a new PIN at login.</div><button class="btn" onclick="admin()">Done</button></div>'); });
 }
+
+// ================================================================ RETAIL
+function retailOrderForm(vid, preset) {
+  var h = '<div class="card" id="rof"><div class="h">New retail order (B2B kit sale)</div>';
+  h += '<label>Retailer *</label><input id="ro_q" placeholder="Type to search retailer, area, GSTIN"><select id="ro_r" size="5" style="margin-top:6px"></select>';
+  h += '<details id="ro_new"><summary>+ Retailer not in the list? Add new</summary><label>Retailer / firm name</label><input id="nr_name"><label>Mobile</label><input id="nr_mob" type="tel"><label>Area</label><input id="nr_area" list="nr_areas"><datalist id="nr_areas"></datalist><label>GSTIN</label><input id="nr_gst" autocapitalize="characters"><label>City / town</label><input id="nr_city"></details>';
+  h += '<label>Kits (enter quantity against each size) *</label>' + kitGrid('KitMix', '');
+  h += '<label>Panel type</label><select id="ro_pt"><option></option><option>DCR</option><option>NDCR</option><option>DCR + NDCR</option></select>';
+  h += '<label>Order value (Rs, if known)</label><input id="ro_val" type="number" inputmode="decimal"><label>Remark</label><input id="ro_note">';
+  h += '<button class="btn" id="ro_btn" onclick="saveROrder(false)">Save retail order</button></div>';
+  $('lfx').innerHTML = h;
+  call('retailers', {vertical: vid}, function (d) {
+    S.rlist = d.retailers;
+    $('nr_areas').innerHTML = d.areas.map(function (a) { return '<option value="' + esc(a) + '">'; }).join('');
+    var draw = function () {
+      var q = $('ro_q').value.toLowerCase();
+      var l = S.rlist.filter(function (r) { return !q || (r.Name + ' ' + r.Area + ' ' + r.GSTIN + ' ' + r.Mobile).toLowerCase().indexOf(q) > -1; }).slice(0, 80);
+      $('ro_r').innerHTML = l.map(function (r) { return '<option value="' + r.RetailerID + '"' + (preset === r.RetailerID ? ' selected' : '') + '>' + esc(r.Name + (r.Area ? ' · ' + r.Area : '') + (r.LastOrder ? ' · last ' + r.LastOrder : '')) + '</option>'; }).join('');
+    };
+    $('ro_q').addEventListener('input', draw); draw();
+  });
+}
+function saveROrder() {
+  var b = $('ro_btn'), vid = $('l_v') ? $('l_v').value : S.lastV, mix = kitMixFrom(document.querySelector('#rof [data-kits]'));
+  if (!mix) { toast('Enter at least one kit quantity.'); return; }
+  var go2 = function (rid) {
+    b.disabled = true;
+    call('createROrder', {RetailerID: rid, KitMix: mix, PanelType: $('ro_pt').value, OrderValue: $('ro_val').value, NextAction: $('ro_note').value}, function (d) { toast('Retail order saved.'); openOrder(d.id); }, function () { b.disabled = false; });
+  };
+  var nn = $('nr_name').value.trim();
+  if (nn) {
+    call('saveRetailer', {Vertical: vid, Name: nn, Mobile: $('nr_mob').value, Area: $('nr_area').value, GSTIN: $('nr_gst').value, City: $('nr_city').value}, function (r) {
+      if (r.duplicate) { if (confirmBox(r.duplicate.Name + ' already exists' + (r.duplicate.Area ? ' (' + r.duplicate.Area + ')' : '') + '. Use the existing retailer?')) go2(r.duplicate.RetailerID); return; }
+      go2(r.id);
+    });
+  } else if ($('ro_r').value) go2($('ro_r').value);
+  else toast('Pick the retailer from the list, or add a new one.');
+}
+function openRetailer(id) { S.curR = id; loading(); call('retailer', {id: id}, renderRetailer); }
+function bucketBadge(days) {
+  if (days === '' || days === undefined || days === null) return '<span class="badge bn">No order yet</span>';
+  var c = days <= 30 ? 'b0' : (days <= 60 ? 'b1' : 'b2');
+  return '<span class="badge ' + c + '">' + days + ' d since order</span>';
+}
+function retail() {
+  S.rtab = S.rtab || 'ret';
+  var h = '<div class="chips">' + [['ret', 'Retailers'], ['ord', 'Orders'], ['rdash', 'Dashboard']].map(function (t) { return '<span class="chip ' + (S.rtab === t[0] ? 'on' : '') + '" onclick="S.rtab=\'' + t[0] + '\';retail()">' + t[1] + '</span>'; }).join('') + '</div><div id="rbody"><div class="load">Loading…</div></div>';
+  set(h);
+  if (S.rtab === 'ret') retailerList(); else if (S.rtab === 'ord') retailOrders(); else retailDash();
+}
+function retailerList() {
+  S.rv = S.rv || ''; S.rview = S.rview || ''; S.rq = S.rq || ''; S.rarea = S.rarea || '';
+  call('retailers', {vertical: S.rv, view: S.rview, q: S.rq, area: S.rarea}, function (d) {
+    var h = '';
+    if (d.verticals.length > 1) h += '<select class="sm" onchange="S.rv=this.value;S.rarea=\'\';retailerList()"><option value="">All retail verticals</option>' + d.verticals.map(function (v) { return '<option value="' + v.id + '"' + (S.rv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select> ';
+    h += '<select class="sm" onchange="S.rarea=this.value;retailerList()"><option value="">All areas</option>' + d.areas.map(function (a) { return '<option' + (S.rarea === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select>';
+    h += '<div class="chips" style="margin-top:8px">' + [['', 'All'], ['due', 'Follow-up due'], ['dormant', 'No order 30+ days'], ['active', 'Ordered this month']].map(function (c) { return '<span class="chip ' + (S.rview === c[0] ? 'on' : '') + '" onclick="S.rview=\'' + c[0] + '\';retailerList()">' + c[1] + '</span>'; }).join('') + '</div>';
+    h += '<div class="row"><input id="rq" placeholder="Search name, mobile, area, GSTIN" value="' + esc(S.rq) + '" style="flex:1"><button class="chip" onclick="editRetailer(null)">+ Add</button></div>';
+    h += '<div class="muted" style="margin:8px 0">' + d.total + ' retailer' + (d.total === 1 ? '' : 's') + '</div>';
+    d.retailers.forEach(function (r) {
+      h += '<div class="card item" onclick="openRetailer(\'' + r.RetailerID + '\')"><div class="row"><div class="name">' + esc(r.Name) + '</div>' + bucketBadge(r.Days) + '</div>' +
+        '<div class="row muted" style="margin-top:4px"><span>' + esc(r.Area || 'No area') + (r.SalesExec ? ' · ' + esc(r.SalesExec) : '') + '</span><span>' + (r.KitsMonth ? '<b>' + r.KitsMonth + '</b> kits this month' : (r.Kits90 ? r.Kits90 + ' kits / 90 d' : '')) + '</span></div>' +
+        (r.NextFollowUp ? '<div class="muted">' + (r.Due ? '<b style="color:#B26A00">Follow-up due ' : 'Next follow-up ') + esc(r.NextFollowUp) + (r.Due ? '</b>' : '') + '</div>' : '') + (r.OpenOrders ? '<div class="muted">' + r.OpenOrders + ' open order(s)</div>' : '') + '</div>';
+    });
+    if ($('rbody')) $('rbody').innerHTML = h;
+    var t; $('rq').addEventListener('input', function () { clearTimeout(t); var v = this.value; t = setTimeout(function () { S.rq = v; retailerList(); }, 500); });
+  });
+}
+function renderRetailer(d) {
+  var r = d.retailer, u = S.boot.user, h = '<button class="chip" onclick="go(\'retail\')">← Retailers</button>';
+  h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(r.Name) + '</div>' + (r.Status === 'Inactive' ? '<span class="badge red">Inactive</span>' : bucketBadge(d.days)) + '</div>' +
+    '<div class="muted">' + esc(r.Vertical) + ' · ' + esc(r.Area || 'No area') + (r.City ? ' · ' + esc(r.City) : '') + (r.SalesExec ? ' · ' + esc(r.SalesExec) : '') + '</div>' +
+    (r.GSTIN ? '<div class="muted">GSTIN ' + esc(r.GSTIN) + '</div>' : '') + '<div style="margin-top:6px">Last order: <b>' + esc(d.last || 'none yet') + '</b></div>' +
+    (r.NextFollowUp ? '<div>Next follow-up: <b>' + esc(String(r.NextFollowUp).slice(0, 10)) + '</b>' + (r.FollowUpNote ? ' · ' + esc(r.FollowUpNote) : '') + '</div>' : '') +
+    (r.Mobile ? '<div class="two"><a class="btn sec" style="text-align:center;text-decoration:none" href="tel:' + esc(r.Mobile) + '">Call</a><a class="btn sec" style="text-align:center;text-decoration:none" target="_blank" href="https://wa.me/91' + esc(String(r.Mobile).replace(/\D/g, '').slice(-10)) + '">WhatsApp</a></div>' : '<div class="muted">No mobile number saved yet.</div>') +
+    '<button class="btn green" onclick="newOrderFor(\'' + r.RetailerID + '\',\'' + r.Vertical + '\')">+ New order for this retailer</button></div>';
+  h += '<div class="st">Log follow-up</div><div class="card"><label>How</label><select id="fu_mode"><option>Call</option><option>Visit</option><option>WhatsApp</option></select>' +
+    '<label>What happened *</label><input id="fu_note" placeholder="e.g. needs 2 x 3KW next week"><label>Next follow-up on</label><input id="fu_next" type="date">' +
+    '<button class="btn" onclick="saveFollow()">Save follow-up</button></div>';
+  h += '<div class="st">Kits and value by month</div><div class="tbl"><table><tr><th>Month</th><th>Kits</th><th>Value</th></tr>' + (d.months.length ? d.months.map(function (m) { return '<tr><td>' + esc(m.m) + '</td><td>' + m.kits + '</td><td>' + (m.value ? lakh(m.value) : '—') + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">No purchases recorded yet.</td></tr>') + '</table></div>';
+  if (d.orders.length) { h += '<div class="st">Orders in the app</div>'; d.orders.forEach(function (o) { h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><span>' + esc(o.KitMix || '') + '</span>' + stageBadge(o.Stage, o.Overdue) + '</div><div class="muted">' + esc(o.OrderID) + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</div></div>'; }); }
+  h += '<div class="st">Invoices and supplies</div><div class="card">' + (d.sales.length ? d.sales.map(function (s) { return '<div class="ln"><span class="nm">' + esc(s.Date) + ' · ' + esc(s.InvoiceNo || 'no invoice no.') + '<div class="muted">' + esc(s.KitMix || '') + ' · ' + esc(s.Source) + (s.Retail !== 'Yes' ? ' · not counted (' + esc(s.Retail) + ')' : '') + '</div></span><span style="text-align:right">' + (s.Kits !== '' ? '<b>' + s.Kits + '</b> kits' : '') + '<div class="muted">' + (s.Value ? inr(s.Value) : '') + '</div></span></div>'; }).join('') : '<span class="muted">None yet.</span>') + '</div>';
+  h += '<details><summary>Edit retailer details</summary><div class="card" id="rform">' + retailerFields(r, d.areas) + '<button class="btn" onclick="saveRetailerForm(\'' + r.RetailerID + '\')">Save</button></div></details>';
+  h += '<div class="st">History</div><div class="card">' + (d.activity.length ? d.activity.map(function (a) { return '<div class="act"><span class="muted">' + esc(a.Time) + ' · ' + esc(a.User) + '</span><br>' + esc(a.Action) + ': ' + esc(a.Detail) + '</div>'; }).join('') : '<span class="muted">No follow-ups logged yet.</span>') + '</div>';
+  set(h);
+}
+function retailerFields(r, areas) {
+  var u = S.boot.user, vs = S.boot.verticals.filter(function (v) { return v.line === 'Retail'; });
+  var h = '<label>Vertical</label><select id="rf_v">' + vs.map(function (v) { return '<option value="' + v.id + '"' + (r.Vertical === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
+  h += '<label>Name</label><input id="rf_name" value="' + esc(r.Name || '') + '"><label>Mobile</label><input id="rf_mob" type="tel" value="' + esc(r.Mobile || '') + '">';
+  h += '<label>Area</label><input id="rf_area" list="rf_areas" value="' + esc(r.Area || '') + '"><datalist id="rf_areas">' + (areas || []).map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
+  h += '<label>GSTIN</label><input id="rf_gst" value="' + esc(r.GSTIN || '') + '"><label>City / town</label><input id="rf_city" value="' + esc(r.City || '') + '">';
+  if (u.mgr || u.roles.indexOf('COORD') > -1) h += '<label>Sales executive</label><select id="rf_se"><option value="">—</option>' + peopleFor('SALES', r.Vertical || (vs[0] || {}).id).map(function (p) { return '<option' + (p === r.SalesExec ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>';
+  h += '<label>Status</label><select id="rf_st"><option' + (r.Status !== 'Inactive' ? ' selected' : '') + '>Active</option><option' + (r.Status === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
+  h += '<label>Notes</label><input id="rf_notes" value="' + esc(r.Notes || '') + '">';
+  return h;
+}
+function editRetailer() {
+  var h = '<button class="chip" onclick="go(\'retail\')">← Retailers</button><div class="card" style="margin-top:10px" id="rform"><div class="h">Add retailer</div>' + retailerFields({Vertical: S.rv}, []) + '<button class="btn" onclick="saveRetailerForm(null)">Save retailer</button></div>';
+  set(h);
+}
+function saveRetailerForm(id, force) {
+  var p = {RetailerID: id, Vertical: $('rf_v').value, Name: $('rf_name').value, Mobile: $('rf_mob').value, Area: $('rf_area').value, GSTIN: $('rf_gst').value, City: $('rf_city').value, Status: $('rf_st').value, Notes: $('rf_notes').value, force: force};
+  if ($('rf_se')) p.SalesExec = $('rf_se').value;
+  call('saveRetailer', p, function (r) {
+    if (r.duplicate) { if (confirmBox(r.duplicate.Name + ' already exists. Save anyway?')) saveRetailerForm(id, true); else openRetailer(r.duplicate.RetailerID); return; }
+    toast('Retailer saved.'); openRetailer(r.id);
+  });
+}
+function saveFollow() { call('followUp', {id: S.curR, mode: $('fu_mode').value, note: $('fu_note').value, next: $('fu_next').value}, function () { toast('Follow-up saved.'); openRetailer(S.curR); }); }
+function newOrderFor(rid, vid) { S.lastV = vid; S.tab = 'lead'; set('<div class="h">New retail order</div><div id="lfx"></div>'); retailOrderForm(vid, rid); }
+function retailOrders() {
+  S.rstage = S.rstage || '';
+  var chips = '<span class="chip ' + (S.rstage === '' ? 'on' : '') + '" onclick="S.rstage=\'\';retailOrders()">All active</span>' + S.boot.rstages.map(function (s) { return '<span class="chip ' + (S.rstage === s.code ? 'on' : '') + '" onclick="S.rstage=\'' + s.code + '\';retailOrders()">' + esc(s.code) + '</span>'; }).join('');
+  call('rorders', {stage: S.rstage}, function (d) {
+    var h = '<div class="chips">' + chips + '</div><div class="muted" style="margin-bottom:8px">' + d.total + ' order(s)</div>';
+    d.orders.forEach(function (o) { h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div><div class="row muted" style="margin-top:4px"><span>' + esc(o.KitMix || '') + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</span><span>' + (o.DaysInStage !== '' ? o.DaysInStage + ' d in stage' : '') + '</span></div>' + (o.Balance > 0 && o.OrderValue ? '<div class="muted">Advance pending ' + inr(o.Balance) + '</div>' : '') + '</div>'; });
+    if (!d.orders.length) h += '<div class="card muted">No retail orders here. Create one from + New.</div>';
+    if ($('rbody')) $('rbody').innerHTML = h;
+  });
+}
+function retailDash() {
+  S.rmonth = S.rmonth || new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7);
+  call('retailDash', {month: S.rmonth}, function (d) {
+    var t = d.total, pct = t.target ? Math.round(t.kits * 100 / t.target) + '%' : '—';
+    var h = '<div class="row"><div class="h">Retail · ' + esc(d.month) + '</div><input type="month" value="' + esc(d.month) + '" onchange="S.rmonth=this.value;retailDash()" style="width:150px"></div>';
+    h += '<div class="tiles">' + [['Kits sold', t.kits], ['Invoice value', lakh(t.value)], ['Target kits / achieved', (t.target || '—') + ' / ' + pct], ['Retailers ordering', t.active + ' of ' + t.retailers], ['Follow-ups due', t.due], ['No order 30+ days', t.dormant]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    if (d.noKits) h += '<div class="note">' + d.noKits + ' imported invoice(s) have no kit count yet (no matching stock-out entry). Value is counted; kits will fill in once dispatch is recorded with the invoice number.</div>';
+    var tbl = function (title, rows, first) { var x = '<div class="st">' + title + '</div><div class="tbl"><table><tr><th>' + first + '</th><th>Target</th><th>Kits</th><th>Value</th><th>Ordering</th><th>Retailers</th><th>Due</th><th>30+ d</th></tr>'; rows.forEach(function (v) { x += '<tr><td>' + esc(v.name) + '</td><td>' + (v.target || '—') + '</td><td><b>' + v.kits + '</b></td><td>' + lakh(v.value) + '</td><td>' + v.active + '</td><td>' + v.retailers + '</td><td>' + v.due + '</td><td>' + v.dormant + '</td></tr>'; }); return x + '</table></div>'; };
+    h += tbl('By vertical', d.verticals, 'Vertical') + tbl('By sales person', d.people, 'Sales person') + tbl('By area', d.areas, 'Area');
+    h += '<div class="st">Retailer aging (days since last order)</div><div class="tiles">' + Object.keys(d.aging).map(function (k) { return '<div class="tile"><div class="v">' + d.aging[k] + '</div><div class="k">' + (k === 'Never' ? 'No order yet' : k + ' days') + '</div></div>'; }).join('') + '</div>';
+    h += '<div class="st">Last 6 months</div><div class="tbl"><table><tr><th>Month</th><th>Kits</th><th>Value</th></tr>' + d.trend.map(function (m) { return '<tr><td>' + esc(m.m) + '</td><td>' + m.kits + '</td><td>' + lakh(m.value) + '</td></tr>'; }).join('') + '</table></div>';
+    h += '<div class="st">Retail orders in progress</div><div class="tbl"><table><tr><th>Stage</th><th>Orders</th><th>Kits</th><th>Value</th></tr>' + d.stages.map(function (s) { return '<tr class="item" onclick="S.rtab=\'ord\';S.rstage=\'' + s.code + '\';retail()"><td>' + esc(s.code) + '</td><td>' + s.count + '</td><td>' + s.kits + '</td><td>' + lakh(s.value) + '</td></tr>'; }).join('') + '</table></div>';
+    if (d.waiting.length) h += '<div class="st">Waiting for 100% advance</div>' + d.waiting.map(function (o) { return '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><b>' + esc(o.CustomerName) + '</b><span class="badge ' + (o.DaysInStage > 2 ? 'red' : 'amber') + '">' + o.DaysInStage + ' d</span></div><div class="muted">' + esc(o.KitMix) + ' · pending ' + inr(o.Balance) + '</div></div>'; }).join('');
+    if (d.check.length) h += '<div class="st">Large invoices to confirm (retail or not?)</div>' + d.check.map(function (c) { return '<div class="card"><div class="row"><b>' + esc(c.Party) + '</b><span>' + lakh(c.Value) + '</span></div><div class="muted">' + esc(c.InvoiceNo) + ' · ' + esc(c.Date) + ' · no kit dispatch found</div><div class="two"><button class="btn sec" onclick="markSale(\'' + c.SaleID + '\',\'Yes\')">Count as retail</button><button class="btn sec" onclick="markSale(\'' + c.SaleID + '\',\'No\')">Not retail</button></div></div>'; }).join('');
+    if (d.canImport) h += '<div class="st">Weekly MyBillbook import</div><div class="card"><div class="muted">1. Download the GSTR-1 report from MyBillbook. 2. Copy everything on its "b2b" sheet. 3. Paste at cell A1 of the ImportB2B tab in the database sheet. 4. Tap the button. Only 5% invoices with a GSTIN are taken; already imported invoices are updated, not duplicated.</div><button class="btn" onclick="importBB(this)">Import MyBillbook now</button></div>';
+    if ($('rbody')) $('rbody').innerHTML = h;
+  });
+}
+function markSale(id, v) { call('setSaleRetail', {id: id, retail: v}, function () { toast('Saved.'); retailDash(); }); }
+function importBB(b) { busy(b); call('importBillbook', {}, function (r) { toast('Imported: ' + r.added + ' new, ' + r.updated + ' updated, ' + r.newRetailers + ' new retailer(s).'); retailDash(); }, function () { b.disabled = false; }); }
+
+// ================================================================ STOCK
+function stock() {
+  loading();
+  call('stock', {wh: S.wh}, function (d) {
+    S.stk = d; S.wh = d.warehouse.id; S.cat = S.cat || 'Inverter';
+    var h = '<div class="row"><select class="sm" onchange="S.wh=this.value;stock()">' + d.warehouses.map(function (w) { return '<option value="' + w.id + '"' + (w.id === d.warehouse.id ? ' selected' : '') + '>' + esc(w.name) + '</option>'; }).join('') + '</select>' +
+      '<button class="chip" onclick="moveHistory()">History</button></div>';
+    var inv = d.items.filter(function (i) { return i.Category === 'Inverter'; }).reduce(function (a, i) { return a + i.Qty; }, 0), pan = d.items.filter(function (i) { return i.Category === 'Panel'; }).reduce(function (a, i) { return a + i.Qty; }, 0);
+    var outInv = d.items.filter(function (i) { return i.Category === 'Inverter'; }).reduce(function (a, i) { return a + i.OutMonth; }, 0);
+    h += '<div class="tiles" style="margin-top:10px">' + [['Inverters (kits) in stock', inv], ['Panels in stock', pan], ['Kits dispatched this month', outInv], ['Pending dispatch', d.pending.length]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    if (d.canMove) h += '<div class="two"><button class="btn" onclick="moveForm(\'Out - Retail (B2B)\')">Dispatch / stock out</button><button class="btn green" onclick="moveForm(\'In - Supply\')">Stock in</button></div><div class="two"><button class="btn sec" onclick="moveForm(\'Transfer out\')">Transfer</button><button class="btn sec" onclick="moveForm(\'Adjustment +\')">Adjust</button></div>';
+    if (d.pending.length) h += '<div class="st">Waiting for dispatch</div>' + d.pending.map(function (p) { return '<div class="card"><div class="row"><b>' + esc(p.name) + '</b><span class="badge">' + p.kind + '</span></div><div class="muted">' + esc(p.kits || '') + (p.invoice ? ' · Inv ' + esc(p.invoice) : '') + '</div>' + (d.canMove ? '<button class="btn sec" onclick="dispatchFor(\'' + p.id + '\')">Record dispatch</button>' : '') + '</div>'; }).join('');
+    var cats = []; d.items.forEach(function (i) { if (cats.indexOf(i.Category) < 0) cats.push(i.Category); });
+    h += '<div class="st">Stock in hand</div><div class="chips">' + cats.map(function (c) { return '<span class="chip ' + (S.cat === c ? 'on' : '') + '" onclick="S.cat=\'' + c + '\';stock()">' + esc(c) + '</span>'; }).join('') + '<span class="chip ' + (S.cat === 'all' ? 'on' : '') + '" onclick="S.cat=\'all\';stock()">All</span></div>';
+    h += '<div class="card">' + d.items.filter(function (i) { return (S.cat === 'all' || i.Category === S.cat) && (i.Qty || i.OutMonth || i.InMonth); }).map(function (i) { return '<div class="ln"><span class="nm">' + esc(i.Name) + (i.OutMonth || i.InMonth ? '<div class="muted">this month: in ' + i.InMonth + ' · out ' + i.OutMonth + '</div>' : '') + '</span><b class="' + (i.Qty < 0 ? 'neg' : '') + '">' + i.Qty + ' <span class="muted">' + esc(i.Unit) + '</span></b></div>'; }).join('') + '</div>';
+    if (d.recent.length) h += '<div class="st">Recent entries</div><div class="card">' + d.recent.slice(0, 20).map(function (m) { return '<div class="ln"><span class="nm">' + esc(m.Item) + '<div class="muted">' + esc(m.Date) + ' · ' + esc(m.Type) + (m.Party ? ' · ' + esc(m.Party) : '') + (m.InvoiceNo ? ' · ' + esc(m.InvoiceNo) : '') + '</div></span><b class="' + (m.Qty < 0 ? 'neg' : '') + '">' + (m.Qty > 0 ? '+' : '') + m.Qty + '</b></div>'; }).join('') + '</div>';
+    if (S.boot.user.mgr || S.boot.user.roles.indexOf('SUPPLY') > -1) h += '<details><summary>+ Add a new item</summary><div class="card"><label>Item name</label><input id="ni_name" placeholder="e.g. Panel DCR 625Wp"><label>Category</label><select id="ni_cat">' + S.boot.itemCats.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select><label>Unit</label><input id="ni_unit" value="Nos"><button class="btn" onclick="addItem()">Add item</button></div></details>';
+    set(h);
+  });
+}
+function dispatchFor(id) {
+  var go3 = function () { var p = (S.stk.pending || []).filter(function (x) { return x.id === id; })[0] || {id: id, name: '', invoice: '', kind: id.indexOf('RO') === 0 ? 'Retail' : 'EPC'}; moveForm(p.kind === 'Retail' ? 'Out - Retail (B2B)' : 'Out - EPC customer', p); };
+  if (S.stk && S.tab === 'stock') go3(); else { S.tab = 'stock'; call('stock', {wh: S.ctx && S.ctx.order && S.ctx.order.Warehouse || S.wh}, function (d) { S.stk = d; S.wh = d.warehouse.id; go3(); }); }
+}
+function moveForm(type, ref) {
+  var d = S.stk, ref2 = ref || {};
+  var h = '<button class="chip" onclick="stock()">← Stock</button><div class="card" style="margin-top:10px" id="mf"><div class="h">' + esc(d.warehouse.name) + '</div>';
+  h += '<label>Type</label><select id="mv_type" onchange="mvType()">' + S.boot.moveTypes.map(function (t) { return '<option' + (t === type ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>';
+  h += '<div id="mv_to" style="display:none"><label>Send to warehouse</label><select id="mv_tow">' + d.allWarehouses.filter(function (w) { return w.id !== d.warehouse.id; }).map(function (w) { return '<option value="' + w.id + '">' + esc(w.name) + '</option>'; }).join('') + '</select></div>';
+  h += '<label>Date</label><input id="mv_date" type="date" value="' + new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10) + '">';
+  h += '<label>For order (optional)</label><select id="mv_ref"><option value="">—</option>' + d.pending.map(function (p) { return '<option value="' + p.id + '"' + (p.id === ref2.id ? ' selected' : '') + '>' + esc(p.kind + ': ' + p.name + (p.kits ? ' (' + p.kits + ')' : '')) + '</option>'; }).join('') + (ref2.id && !d.pending.some(function (p) { return p.id === ref2.id; }) ? '<option value="' + esc(ref2.id) + '" selected>' + esc(ref2.id) + '</option>' : '') + '</select>';
+  h += '<label id="mv_pl">Party (retailer / customer / supplier)</label><input id="mv_party" value="' + esc(ref2.name || '') + '"><label>Invoice no. (MyBillbook or supplier)</label><input id="mv_inv" value="' + esc(ref2.invoice || '') + '">';
+  h += '<label>Quantities</label><div class="muted">Enter only the items moving. Current stock shown on the right.</div>';
+  var cats = []; d.items.forEach(function (i) { if (cats.indexOf(i.Category) < 0) cats.push(i.Category); });
+  var row = function (i) { return '<div class="ln"><span class="nm">' + esc(i.Name) + ' <span class="muted">(' + i.Qty + ')</span></span><input class="qty" type="number" inputmode="decimal" min="0" data-item="' + i.ItemID + '" placeholder="0"></div>'; };
+  cats.forEach(function (c) {
+    var its = d.items.filter(function (i) { return i.Category === c && i.Qty !== 0; });
+    if (its.length) h += '<details' + (c === 'Inverter' || c === 'Panel' ? ' open' : '') + '><summary>' + esc(c) + ' (in stock)</summary>' + its.map(row).join('') + '</details>';
+  });
+  var zero = d.items.filter(function (i) { return i.Qty === 0; });
+  if (zero.length) h += '<details><summary>Items with zero stock (' + zero.length + ')</summary>' + zero.map(row).join('') + '</details>';
+  h += '<label>Serial numbers (panels / inverter, for warranty)</label><textarea id="mv_ser" placeholder="One per line or comma separated"></textarea><label>Note</label><input id="mv_note">';
+  h += '<button class="btn" id="mv_btn" onclick="saveMove()">Save entry</button></div>';
+  set(h); mvType();
+}
+function mvType() { var t = $('mv_type').value; $('mv_to').style.display = t === 'Transfer out' ? 'block' : 'none'; $('mv_pl').textContent = t === 'In - Supply' ? 'Supplier (e.g. Tata Power)' : 'Party (retailer / customer)'; }
+function saveMove() {
+  var lines = [], ins = document.querySelectorAll('#mf input[data-item]');
+  for (var i = 0; i < ins.length; i++) if (Number(ins[i].value) > 0) lines.push({itemId: ins[i].getAttribute('data-item'), qty: ins[i].value});
+  var b = $('mv_btn'); busy(b);
+  call('saveMove', {wh: S.stk.warehouse.id, type: $('mv_type').value, toWh: $('mv_tow').value, date: $('mv_date').value, refId: $('mv_ref').value, party: $('mv_party').value, invoiceNo: $('mv_inv').value, serials: $('mv_ser').value, note: $('mv_note').value, lines: lines}, function (r) {
+    toast('Saved ' + r.lines + ' line(s).');
+    var ref = $('mv_ref').value;
+    if (ref) openOrder(ref); else stock();
+  }, function () { b.disabled = false; });
+}
+function moveHistory() {
+  var d = S.stk;
+  set('<button class="chip" onclick="stock()">← Stock</button><div class="h" style="margin-top:8px">' + esc(d.warehouse.name) + ' · history</div><input id="mh_q" placeholder="Search item, party, invoice, serial"><div id="mh" class="card" style="margin-top:8px"><div class="load">Loading…</div></div>');
+  var load = function () { call('moves', {wh: d.warehouse.id, q: $('mh_q').value}, function (r) { $('mh').innerHTML = r.moves.length ? r.moves.map(function (m) { return '<div class="ln"><span class="nm">' + esc(m.Item) + '<div class="muted">' + esc(m.Date) + ' · ' + esc(m.Type) + (m.Party ? ' · ' + esc(m.Party) : '') + (m.InvoiceNo ? ' · ' + esc(m.InvoiceNo) : '') + (m.By ? ' · by ' + esc(m.By) : '') + (m.Serials ? '<br>SN: ' + esc(m.Serials) : '') + '</div></span><b class="' + (m.Qty < 0 ? 'neg' : '') + '">' + (m.Qty > 0 ? '+' : '') + m.Qty + '</b></div>'; }).join('') : '<span class="muted">No entries.</span>'; }); };
+  var t; $('mh_q').addEventListener('input', function () { clearTimeout(t); t = setTimeout(load, 500); }); load();
+}
+function addItem() { call('saveItem', {Name: $('ni_name').value, Category: $('ni_cat').value, Unit: $('ni_unit').value}, function () { toast('Item added.'); stock(); }); }
 
 // ---------------------------------------------------------------- go
 S.token = store('tok');
