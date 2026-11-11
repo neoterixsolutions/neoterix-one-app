@@ -135,6 +135,7 @@ function start() {
   call('boot', {}, function (d) {
     S.boot = d;
     if (d.user.mustChange) { showChangePin(true); return; }
+    if (d.user.referrerOnly) S.tab = 'earn';
     $('hdr').style.display = 'flex';
     $('who').textContent = d.user.name + ' · ' + d.user.roles.map(function (r) { return d.roles[r] || r; }).join(', ');
     renderNav(); go(S.tab);
@@ -143,12 +144,16 @@ function start() {
 function hasLine(retail) { return S.boot.verticals.some(function (v) { return retail ? v.line === 'Retail' : v.line !== 'Retail'; }); }
 function renderNav() {
   var u = S.boot.user, tabs = [['work', '✓', 'My work']];
+  if (u.referrerOnly) tabs = [['earn', '★', 'Refer & Earn']];
+  else {
+  if (u.canRefer) tabs.push(['earn', '★', 'Refer']);
   if (hasLine(false)) tabs.push(['cust', '☰', 'Customers']);
   if (hasLine(true)) tabs.push(['retail', '◆', 'Retail']);
   if (S.boot.warehouses.length) tabs.push(['stock', '▤', 'Stock']);
   tabs.push(['lead', '+', 'New']);
   if (u.mgr) tabs.push(['dash', '▦', 'Dashboard']);
   if (u.admin) tabs.push(['admin', '⚙', 'Users']);
+  }
   $('nav').innerHTML = tabs.map(function (t) { return '<button id="nb_' + t[0] + '" onclick="go(\'' + t[0] + '\')"><span class="i">' + t[1] + '</span>' + t[2] + '</button>'; }).join('');
   $('nav').style.display = 'flex';
 }
@@ -158,7 +163,7 @@ function go(tab) {
   if ($('nb_' + tab)) $('nb_' + tab).className = 'on';
   S.F = null; S.ST = null;
   if (tab === 'work') work(); else if (tab === 'cust') customers(); else if (tab === 'lead') newLead(); else if (tab === 'dash') dashboard(); else if (tab === 'admin') admin();
-  else if (tab === 'retail') retail(); else if (tab === 'stock') stock();
+  else if (tab === 'retail') retail(); else if (tab === 'stock') stock(); else if (tab === 'earn') earn();
 }
 function stageBadge(stage, overdue) {
   var cls = stage === 'Closed - Complete' ? 'green' : (stage === 'Cancelled' ? 'red' : '');
@@ -228,7 +233,7 @@ function loadList() {
 
 // ---------------------------------------------------------------- order detail
 function peopleFor(role, vert) {
-  return S.boot.people.filter(function (p) { return p.roles.indexOf(role) > -1 && (p.verts.indexOf(vert) > -1 || p.verts.indexOf('ALL') > -1); }).map(function (p) { return p.name; });
+  return S.boot.people.filter(function (p) { return (!role || p.roles.indexOf(role) > -1) && (p.verts.indexOf(vert) > -1 || p.verts.indexOf('ALL') > -1); }).map(function (p) { return p.name; });
 }
 function kitGrid(id, mix) {
   var have = {};
@@ -333,6 +338,8 @@ function renderOrder(d) {
   Object.keys(F).forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
   h += '<button class="btn" onclick="saveDetails()">Save details</button></details></div>';
 
+  if (!R) h += incCard(d);
+
   // manager actions
   if (u.mgr && o.Status === 'Active') {
     h += '<div class="st">Head / Director actions</div><div class="card"><label>Move to stage</label><select id="mv">' + S.ST.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select>' +
@@ -376,7 +383,7 @@ function leadForm() {
   h += '<label>Customer name *</label><input id="l_name"><label>Mobile *</label><input id="l_mob" type="tel" inputmode="tel">';
   h += '<label>City / village</label><input id="l_city"><label>Address</label><textarea id="l_addr"></textarea>';
   h += '<label>Expected capacity (kW)</label><input id="l_kw" type="number" inputmode="decimal">';
-  h += '<label>Lead source</label><select id="l_src">' + S.boot.fields.LeadSource.o.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>';
+  h += '<label>Lead type</label><select id="l_src"><option value="">— choose —</option>' + S.boot.fields.LeadType.o.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>';
   h += '<label>Sales executive</label><select id="l_se"></select>';
   h += '<label>Remark</label><input id="l_note"><button class="btn" id="l_btn" onclick="saveLead(false)">Save lead</button></div>';
   $('lfx').innerHTML = h; leadPeople();
@@ -387,7 +394,7 @@ function leadPeople() {
 }
 function saveLead(force) {
   var b = $('l_btn'); b.disabled = true;
-  call('createLead', {Vertical: $('l_v').value, CustomerName: $('l_name').value, Mobile: $('l_mob').value, City: $('l_city').value, Address: $('l_addr').value, CapacityKW: $('l_kw').value, LeadSource: $('l_src').value, SalesExec: $('l_se').value, NextAction: $('l_note').value, force: force}, function (d) {
+  call('createLead', {Vertical: $('l_v').value, CustomerName: $('l_name').value, Mobile: $('l_mob').value, City: $('l_city').value, Address: $('l_addr').value, CapacityKW: $('l_kw').value, LeadType: $('l_src').value, SalesExec: $('l_se').value, NextAction: $('l_note').value, force: force}, function (d) {
     b.disabled = false;
     if (d.duplicate) {
       if (confirmBox(d.duplicate.CustomerName + ' with this mobile is already active at ' + d.duplicate.Stage + '. Create a new lead anyway?')) saveLead(true); else openOrder(d.duplicate.OrderID);
@@ -669,6 +676,104 @@ function decide(id, ok, b) {
   busy(b);
   call('decideMove', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Approved. Stock updated.' : 'Rejected.'); work(); }, function () { b.disabled = false; });
 }
+// ================================================================ REFER & EARN / INCENTIVES
+function earn() {
+  loading();
+  call('myIncentive', {}, function (d) {
+    S.earn = d;
+    var h = '', u = S.boot.user;
+    if (u.incViewer) h += '<div class="chips"><span class="chip on">Mine</span><span class="chip" onclick="incTeam()">Team incentives</span><span class="chip" onclick="incTeam(null,null,\'board\')">Champions board</span></div>';
+    h += '<button class="btn green" onclick="referForm()">+ Refer a customer</button>';
+    h += '<div class="tiles" style="margin-top:10px">' + [['Incentive earned', inr(d.earned)], ['Payable in ' + d.payNowLabel + ' salary', inr(d.payNow)], ['Approved (all months)', inr(d.payable)], ['Pending (order not complete)', inr(d.pending)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    if (d.fse) h += '<div class="note ' + (d.fse.count >= d.fse.target ? 'ok' : '') + '">Orders this month: <b>' + d.fse.count + ' of ' + d.fse.target + '</b>' + (d.fse.count >= d.fse.target ? ' – self-lead (Direct Sales) incentive unlocked.' : ' – ' + (d.fse.target - d.fse.count) + ' more to unlock your self-lead (Direct Sales) incentive this month.') + '</div>';
+    var b = d.bonus, tgt = function (l) { return b.isSales ? l.sales : l.nonSales; };
+    var top = b.levels[b.levels.length - 1], pct = Math.min(100, Math.round(b.systems / tgt(top) * 100));
+    h += '<div class="st">' + esc(b.name) + '</div><div class="card"><div class="row"><b>' + b.systems + ' system' + (b.systems === 1 ? '' : 's') + ' counted</b>' + (b.level ? '<span class="badge green">' + esc(b.level.name) + ' reached</span>' : '') + '</div>' +
+      '<div style="background:#E8EEF8;border-radius:8px;height:10px;margin:8px 0"><div style="background:var(--g);height:10px;border-radius:8px;width:' + pct + '%"></div></div>' +
+      (b.next ? '<div><b>' + b.need + ' more</b> for Level ' + b.next.level + ' ' + esc(b.next.name) + ' (' + esc(b.next.gifts) + ', up to ' + inr(b.next.value) + ').</div>' : '<div><b>Top level reached!</b></div>') +
+      (b.pipeline ? '<div class="muted">' + b.pipeline + ' more booked, will count once payment, warranty and verification are complete.</div>' : '') +
+      b.levels.map(function (l) { return '<div class="ln"><span class="nm">Level ' + l.level + ' ' + esc(l.name) + ' · ' + tgt(l) + ' systems<div class="muted">' + esc(l.gifts) + ' · up to ' + inr(l.value) + '</div></span>' + (b.systems >= tgt(l) ? '<span class="badge green">✓</span>' : '<span class="badge">' + Math.max(0, tgt(l) - b.systems) + ' to go</span>') + '</div>'; }).join('') +
+      '<div class="muted" style="margin-top:6px">' + (b.isSales ? 'Counts your own Direct Sales orders and your own employee referrals (shared order = ½).' : 'Counts customers you personally refer here.') + ' Orders dated ' + esc(b.from) + ' to ' + esc(b.to) + ', 3–10 kWp, fully paid, warranty and verification done. One gift for the highest level, handed over on ' + esc(b.giftDate) + '.</div></div>';
+    h += '<div class="st">My referrals · ' + d.referrals.length + '</div>';
+    if (!d.referrals.length) h += '<div class="card muted">No referrals yet. Tap "Refer a customer" to add a friend, neighbour or relative who wants rooftop solar.</div>';
+    d.referrals.forEach(function (r) {
+      h += '<div class="card"><div class="row"><b>' + esc(r.customer) + '</b><span class="badge ' + (r.stage === 'Completed' ? 'green' : r.stage === 'Not converted' ? 'red' : '') + '">' + esc(r.stage) + '</span></div><div class="muted">Referred ' + esc(r.date) + (r.kw ? ' · ' + esc(r.kw) + ' kW' : '') + '</div>' +
+        (r.amt !== null ? '<div>Your incentive: <b>' + inr(r.amt) + '</b> · ' + esc(r.status) + '</div>' : '') + '</div>';
+    });
+    var others = d.orders.filter(function (o) { return o.roles.indexOf('Referrer') < 0; });
+    if (others.length) {
+      h += '<div class="st">My other incentive orders · ' + others.length + '</div>';
+      others.forEach(function (o) {
+        h += '<div class="card"><div class="row"><b>' + esc(o.customer) + '</b><b>' + inr(o.amt) + '</b></div><div class="muted">' + esc(o.date) + ' · ' + esc(o.kw || '') + ' kW · ' + esc(o.lt) + ' · ' + esc(o.roles) + '</div>' +
+          '<div><span class="badge ' + (o.status === 'Payable' ? 'green' : 'amber') + '">' + esc(o.status) + (o.payout ? ' · ' + esc(o.payout) + ' salary' : '') + '</span></div>' + (o.notes.length ? '<div class="muted">' + esc(o.notes.join(' ')) + '</div>' : '') + '</div>';
+      });
+    }
+    set(h);
+  });
+}
+function referForm() {
+  var d = S.earn || {verticals: S.boot.incVerts}, vs = S.boot.verticals.filter(function (v) { return d.verticals.indexOf(v.id) > -1; });
+  var h = '<button class="chip" onclick="earn()">← Refer & Earn</button><div class="card" style="margin-top:10px" id="rf"><div class="h">Refer a customer</div>' +
+    '<div class="muted">Our team will call them, and you earn when the order is complete: Rs 3,000 (3–5 kW) or Rs 5,000 (6–10 kW).</div>';
+  if (vs.length > 1) h += '<label>Office</label><select id="r_v">' + vs.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + '</option>'; }).join('') + '</select>';
+  h += '<label>Customer name *</label><input id="r_name"><label>Mobile *</label><input id="r_mob" type="tel" inputmode="tel" maxlength="13"><label>City / village</label><input id="r_city">' +
+    '<label>Approx. system size (kW, if known)</label><input id="r_kw" type="number" inputmode="decimal"><label>Note for the team (best time to call, etc.)</label><input id="r_note">' +
+    '<button class="btn green" id="r_btn" onclick="saveRefer()">Send referral</button></div>';
+  set(h);
+}
+function saveRefer() {
+  var b = $('r_btn'); busy(b);
+  call('referLead', {Vertical: $('r_v') ? $('r_v').value : '', CustomerName: $('r_name').value, Mobile: $('r_mob').value, City: $('r_city').value, CapacityKW: $('r_kw').value, Note: $('r_note').value}, function () { toast('Thank you! Referral sent to the team.'); earn(); }, function () { b.disabled = false; });
+}
+function incTeam(month, payout, view) {
+  loading();
+  S.incView = view || S.incView || 'people';
+  call('incAdmin', {month: month || (S.inc && S.inc.month), payout: payout === undefined ? (S.inc && S.inc.payout) : payout}, function (d) {
+    S.inc = d;
+    var h = '<div class="chips"><span class="chip" onclick="S.incView=null;earn()">Mine</span>' + [['people', 'People'], ['orders', 'Orders'], ['board', 'Champions board']].map(function (x) { return '<span class="chip ' + (S.incView === x[0] ? 'on' : '') + '" onclick="incTeam(null,undefined,\'' + x[0] + '\')">' + x[1] + '</span>'; }).join('') + '</div>';
+    h += '<div class="card"><div class="two"><div><label>Order month</label><select onchange="incTeam(this.value)">' + ['all'].concat(d.months.indexOf(d.month) < 0 && d.month !== 'all' ? [d.month] : []).concat(d.months).map(function (m) { return '<option' + (m === d.month ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>' +
+      '<div><label>Payout (salary) month</label><select onchange="incTeam(null,this.value)"><option value="">—</option>' + d.payouts.map(function (m) { return '<option' + (m === d.payout ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div></div></div>';
+    if (S.incView === 'people') {
+      h += '<div class="st">By person</div><div class="tbl"><table><tr><th>Person</th><th>Orders</th><th>Earned</th><th>Approved</th><th>Pending</th>' + (d.payout ? '<th>' + esc(d.payout) + '</th>' : '') + '<th>' + esc(d.month) + ' orders (target ' + d.target + ')</th></tr>' +
+        d.people.map(function (p) { return '<tr><td>' + esc(p.name) + '</td><td>' + p.orders + '</td><td>' + inr(p.earned) + '</td><td>' + inr(p.payable) + '</td><td>' + inr(p.earned - p.payable) + '</td>' + (d.payout ? '<td><b>' + inr(p.payoutAmt) + '</b></td>' : '') + '<td>' + (p.fse ? p.monthOrders + (p.monthOrders >= d.target ? ' · Met' : ' · ' + (d.target - p.monthOrders) + ' short') : (p.monthOrders || '')) + '</td></tr>'; }).join('') + '</table></div>';
+      h += '<div class="st">By lead type</div><div class="tbl"><table><tr><th>Lead type</th><th>Orders</th><th>kW</th><th>Incentive</th><th>Approved</th></tr>' + d.byType.map(function (t) { return '<tr><td>' + esc(t.type) + '</td><td>' + t.orders + '</td><td>' + t.kw.toFixed(1) + '</td><td>' + inr(t.incentive) + '</td><td>' + inr(t.payable) + '</td></tr>'; }).join('') + '</table></div>';
+    } else if (S.incView === 'orders') {
+      h += '<div class="st">Orders · ' + d.orders.length + '</div>';
+      d.orders.forEach(function (o) {
+        var parts = [['SE1', o.se1, o.a.se1], ['SE2', o.se2, o.a.se2], ['Tele', o.tele, o.a.tele], ['Office', o.office, o.a.office], ['Ref', o.ref, o.a.ref]].filter(function (x) { return x[1]; });
+        h += '<div class="card item" onclick="openOrder(\'' + o.id + '\')"><div class="row"><b>' + esc(o.customer) + '</b><b>' + inr(o.total) + '</b></div><div class="muted">' + esc(o.id) + ' · ' + esc(o.date) + ' · ' + esc(o.kw === null ? '?' : o.kw) + ' kW · ' + esc(o.lt) + '</div>' +
+          '<div>' + parts.map(function (x) { return esc(x[0]) + ': ' + esc(x[1]) + ' ' + inr(x[2]); }).join(' · ') + '</div>' +
+          '<span class="badge ' + (o.status === 'Payable' ? 'green' : (/Incomplete|Out of slab/.test(o.status) ? 'red' : 'amber')) + '">' + esc(o.status) + (o.payout ? ' · ' + esc(o.payout) : '') + '</span>' + (o.notes.length ? '<div class="muted">' + esc(o.notes.join(' ')) + '</div>' : '') + '</div>';
+      });
+    } else {
+      var b = d.bonus;
+      h += '<div class="st">' + esc(b.name) + ' · count closes ' + esc(b.close) + '</div><div class="muted">Targets: non-sales ' + b.levels.map(function (l) { return l.nonSales; }).join('/') + ', sales ' + b.levels.map(function (l) { return l.sales; }).join('/') + ' systems. Gifts on ' + esc(b.giftDate) + '.</div>';
+      h += '<div class="tbl"><table><tr><th>#</th><th>Person</th><th>Type</th><th>Systems</th><th>In pipeline</th><th>Level</th><th>Next</th></tr>' + d.leaders.map(function (x, i) { return '<tr><td>' + (i + 1) + '</td><td>' + esc(x.name) + '</td><td>' + (x.sales ? 'Sales' : 'Non-sales') + '</td><td><b>' + x.systems + '</b></td><td>' + x.pipeline + '</td><td>' + esc(x.level || '—') + '</td><td>' + (x.next ? x.need + ' to ' + esc(x.next) : '—') + '</td></tr>'; }).join('') + '</table></div>';
+      if (!d.leaders.length) h += '<div class="card muted">No qualifying self-lead orders yet (scheme counts orders from 1 Nov 2026).</div>';
+    }
+    set(h);
+  });
+}
+function incCard(d) {
+  var x = d.incentive, o = d.order, u = S.boot.user;
+  if (!x) return '';
+  var h = '<div class="st">Incentive (visible to CEO / Director / Accounts head)</div><div class="card">';
+  if (!x.booked) h += '<div class="muted">Incentive is worked out once the order is booked (OCS signed).</div>';
+  else {
+    var r = x.r;
+    h += '<div class="row"><b>' + inr(r.total) + '</b><span class="badge ' + (r.status === 'Payable' ? 'green' : 'amber') + '">' + esc(r.status) + (r.payout ? ' · ' + esc(r.payout) + ' salary' : '') + '</span></div><div class="muted">' + esc(x.lt || 'Lead type not set') + ' · ' + esc(r.slab) + '</div>';
+    h += '<div class="kv">' + [['Sales exec 1', x.se1, r.se1], ['Sales exec 2', x.se2, r.se2], ['Telecaller', x.tele, r.tele], ['Office staff', x.office, r.office], ['Referrer', x.ref, r.ref]].filter(function (y) { return y[1]; }).map(function (y) { return '<div class="k">' + y[0] + ': ' + esc(y[1]) + '</div><div>' + inr(y[2]) + '</div>'; }).join('') + '</div>';
+    if (r.notes.length) h += '<div class="muted">' + esc(r.notes.join(' ')) + '</div>';
+  }
+  var keep = S.F; S.F = Object.assign({}, S.boot.fields, S.boot.incFields);
+  h += '<details id="incbox"><summary>Edit incentive details</summary>';
+  ['LeadType', 'SalesExec2', 'SE1Share', 'Telecaller', 'OfficeStaff', 'Referrer', 'CustReferrer', 'VerifyCall', 'VerifyDate'].forEach(function (k) { h += input(k, o[k], o.Vertical); });
+  Object.keys(S.boot.incFields).forEach(function (k) { if (k === 'IncSE1' || u.incDecider) h += input(k, x.values[k], o.Vertical); });
+  h += '<button class="btn" onclick="saveInc()">Save incentive details</button></details></div>';
+  S.F = keep;
+  return h;
+}
+function saveInc() { call('saveIncentive', {id: S.cur, values: collect('incbox')}, function (r) { toast(r.changed ? 'Saved ' + r.changed + ' change(s).' : 'No changes.'); openOrder(S.cur); }); }
 function moveHistory() {
   var d = S.stk;
   set('<button class="chip" onclick="stock()">← Stock</button><div class="h" style="margin-top:8px">' + esc(d.warehouse.name) + ' · history</div><input id="mh_q" placeholder="Search item, party, invoice, serial"><div id="mh" class="card" style="margin-top:8px"><div class="load">Loading…</div></div>');
