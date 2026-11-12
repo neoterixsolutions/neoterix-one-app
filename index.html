@@ -62,7 +62,7 @@ nav button{font-size:10px} nav .i{font-size:18px}
 .b0{background:#E7F4EA;color:var(--g)} .b1{background:#FFF3E0;color:var(--y)} .b2{background:#FDECEC;color:var(--r)} .bn{background:#EEE;color:#555}
 .qty{width:90px;text-align:right} .neg{color:var(--r);font-weight:700}
 .ln{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)} .ln:last-child{border:0} .ln .nm{flex:1;font-size:14px}
-select.sm{width:auto;padding:7px;font-size:13px}
+select.sm{width:auto;padding:7px;font-size:13px} .two select.sm{width:100%}
 </style>
 </head>
 <body>
@@ -228,7 +228,11 @@ function work() {
       h += '<div class="st">Payments to approve · ' + d.payApprovals.length + '</div>';
       d.payApprovals.forEach(function (r) { h += payReqCard(r); });
     }
-    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if ((d.retApprovals || []).length) {
+      h += '<div class="st">Retailer deletions to approve · ' + d.retApprovals.length + '</div>';
+      d.retApprovals.forEach(function (r) { h += retDelCard(r); });
+    }
+    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length && !(d.retApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
     if ((d.approvals || []).length) {
       h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
       d.approvals.forEach(function (r) { h += reqCard(r, true); });
@@ -607,16 +611,19 @@ function retail() {
   if (S.rtab === 'ret') retailerList(); else if (S.rtab === 'ord') retailOrders(); else retailDash();
 }
 function retailerList() {
-  S.rv = S.rv || ''; S.rview = S.rview || ''; S.rq = S.rq || ''; S.rarea = S.rarea || '';
-  call('retailers', {vertical: S.rv, view: S.rview, q: S.rq, area: S.rarea}, function (d) {
+  S.rv = S.rv || ''; S.rview = S.rview || ''; S.rq = S.rq || ''; S.rarea = S.rarea || ''; S.rsort = S.rsort || '';
+  call('retailers', {vertical: S.rv, view: S.rview, q: S.rq, area: S.rarea, sort: S.rsort}, function (d) {
     var h = '';
-    if (d.verticals.length > 1) h += '<select class="sm" onchange="S.rv=this.value;S.rarea=\'\';retailerList()"><option value="">All retail verticals</option>' + d.verticals.map(function (v) { return '<option value="' + v.id + '"' + (S.rv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select> ';
-    h += '<select class="sm" onchange="S.rarea=this.value;retailerList()"><option value="">All areas</option>' + d.areas.map(function (a) { return '<option' + (S.rarea === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select>';
-    h += '<div class="chips" style="margin-top:8px">' + [['', 'All'], ['due', 'Follow-up due'], ['dormant', 'No order 30+ days'], ['active', 'Ordered this month']].map(function (c) { return '<span class="chip ' + (S.rview === c[0] ? 'on' : '') + '" onclick="S.rview=\'' + c[0] + '\';retailerList()">' + c[1] + '</span>'; }).join('') + '</div>';
+    if (d.verticals.length > 1) h += '<select class="sm" style="width:100%;margin:6px 0 14px;font-weight:600" onchange="S.rv=this.value;S.rarea=\'\';retailerList()"><option value="">All retail verticals</option>' + d.verticals.map(function (v) { return '<option value="' + v.id + '"' + (S.rv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
+    var sorts = [['', 'Sort: Suggested'], ['az', 'Name A–Z'], ['za', 'Name Z–A'], ['daysDesc', 'Last order: oldest first'], ['daysAsc', 'Last order: latest first'], ['dueDesc', 'Payment pending: high to low'], ['dueAsc', 'Payment pending: low to high'], ['kitsDesc', 'Kits this month: high to low'], ['newest', 'Newest added first']];
+    h += '<div class="two" style="margin-bottom:12px"><select class="sm" onchange="S.rarea=this.value;retailerList()"><option value="">All areas</option>' + d.areas.map(function (a) { return '<option' + (S.rarea === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select>' +
+      '<select class="sm" onchange="S.rsort=this.value;retailerList()">' + sorts.map(function (s) { return '<option value="' + s[0] + '"' + (S.rsort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select></div>';
+    h += '<div class="chips" style="margin-top:8px">' + [['', 'All'], ['new', 'New (' + d.newDays + ' days) · ' + d.newCount], ['due', 'Follow-up due'], ['dormant', 'No order 30+ days'], ['active', 'Ordered this month']].map(function (c) { return '<span class="chip ' + (S.rview === c[0] ? 'on' : '') + '" onclick="S.rview=\'' + c[0] + '\';retailerList()">' + c[1] + '</span>'; }).join('') + '</div>';
     h += '<div class="row"><input id="rq" placeholder="Search name, mobile, area, GSTIN" value="' + esc(S.rq) + '" style="flex:1"><button class="chip" onclick="editRetailer(null)">+ Add</button></div>';
     h += '<div class="muted" style="margin:8px 0">' + d.total + ' retailer' + (d.total === 1 ? '' : 's') + '</div>';
     d.retailers.forEach(function (r) {
-      h += '<div class="card item" onclick="openRetailer(\'' + r.RetailerID + '\')"><div class="row"><div class="name">' + esc(r.Name) + '</div>' + bucketBadge(r.Days) + '</div>' +
+      h += '<div class="card item" onclick="openRetailer(\'' + r.RetailerID + '\')"><div class="row"><div class="name">' + esc(r.Name) + (r.New ? ' <span class="badge green">New</span>' : '') + '</div>' + bucketBadge(r.Days) + '</div>' +
+        (r.New ? '<div class="muted">Added ' + esc(r.CreatedAt) + ' by ' + esc(r.CreatedBy || '') + '</div>' : '') + (r.Pending ? '<div class="muted">Payment pending <b>' + inr(r.Pending) + '</b></div>' : '') + (r.DelPending ? '<div class="muted"><span class="badge amber">Delete waiting for ' + esc(r.DelPending) + '</span></div>' : '') +
         '<div class="row muted" style="margin-top:4px"><span>' + esc(r.Area || 'No area') + (r.SalesExec ? ' · ' + esc(r.SalesExec) : '') + '</span><span>' + (r.KitsMonth ? '<b>' + r.KitsMonth + '</b> kits this month' : (r.Kits90 ? r.Kits90 + ' kits / 90 d' : '')) + '</span></div>' +
         (r.NextFollowUp ? '<div class="muted">' + (r.Due ? '<b style="color:#B26A00">Follow-up due ' : 'Next follow-up ') + esc(r.NextFollowUp) + (r.Due ? '</b>' : '') + '</div>' : '') + (r.OpenOrders ? '<div class="muted">' + r.OpenOrders + ' open order(s)</div>' : '') + '</div>';
     });
@@ -640,8 +647,29 @@ function renderRetailer(d) {
   h += '<div class="st">Invoices and supplies</div><div class="card">' + (d.sales.length ? d.sales.map(function (s) { return '<div class="ln"><span class="nm">' + esc(s.Date) + ' · ' + esc(s.InvoiceNo || 'no invoice no.') + '<div class="muted">' + esc(s.KitMix || '') + ' · ' + esc(s.Source) + (s.Retail !== 'Yes' ? ' · not counted (' + esc(s.Retail) + ')' : '') + '</div></span><span style="text-align:right">' + (s.Kits !== '' ? '<b>' + s.Kits + '</b> kits' : '') + '<div class="muted">' + (s.Value ? inr(s.Value) : '') + '</div></span></div>'; }).join('') : '<span class="muted">None yet.</span>') + '</div>';
   h += accessCard('RETAILER', r.RetailerID, d.access, r.Mobile);
   h += '<details><summary>Edit retailer details</summary><div class="card" id="rform">' + retailerFields(r, d.areas) + '<button class="btn" onclick="saveRetailerForm(\'' + r.RetailerID + '\')">Save</button></div></details>';
+  if (d.delPending) h += '<div class="card"><span class="badge amber">Delete waiting for ' + esc(d.delPending.approver) + '</span><div class="muted">Asked by ' + esc(d.delPending.by) + ' · ' + esc(d.delPending.at) + ' · ' + esc(d.delPending.reason) + '</div></div>';
+  else if (d.canDelete) h += '<details><summary>Delete this retailer</summary><div class="card"><div class="muted">' + (d.delDirect ? 'The retailer is removed from all lists. Past invoices and orders stay.' : 'Goes to ' + esc(d.delApprover) + ' for approval. Past invoices and orders stay.') + '</div><label>Reason *</label><input id="rdel_r" placeholder="e.g. duplicate of another retailer, shop closed"><button class="btn sec" onclick="delRetailer(\'' + r.RetailerID + '\',this)">' + (d.delDirect ? 'Delete retailer' : 'Ask to delete') + '</button></div></details>';
   h += '<div class="st">History</div><div class="card">' + (d.activity.length ? d.activity.map(function (a) { return '<div class="act"><span class="muted">' + esc(a.Time) + ' · ' + esc(a.User) + '</span><br>' + esc(a.Action) + ': ' + esc(a.Detail) + '</div>'; }).join('') : '<span class="muted">No follow-ups logged yet.</span>') + '</div>';
   set(h);
+}
+function delRetailer(id, b) {
+  var reason = $('rdel_r').value;
+  if (!reason.trim()) { toast('Write the reason for deleting.'); return; }
+  if (!confirmBox('Delete this retailer?')) return;
+  busy(b);
+  call('deleteRetailer', {id: id, reason: reason}, function (r) { if (r.deleted) { toast('Retailer deleted.'); go('retail'); } else { toast('Sent to ' + r.approver + ' for approval.'); openRetailer(id); } }, function () { b.disabled = false; });
+}
+function retDelCard(r) {
+  var h = '<div class="card"><div class="row"><b>' + esc(r.name) + '</b><span class="badge red">Delete?</span></div><div class="muted">' + esc(r.vertical) + (r.area ? ' · ' + esc(r.area) : '') + ' · <span class="lnk" onclick="openRetailer(\'' + r.retailerId + '\')">open retailer</span></div>' +
+    '<div>Reason: ' + esc(r.reason) + '</div><div class="muted">Asked by ' + esc(r.by) + ' · ' + esc(r.at) + '</div>';
+  if (r.canDecide) h += '<input id="dr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decideRet(\'' + r.id + '\',true,this)">Approve delete</button><button class="btn sec" onclick="decideRet(\'' + r.id + '\',false,this)">Reject</button></div>';
+  return h + '</div>';
+}
+function decideRet(id, ok, b) {
+  var reason = ($('dr_' + id) || {}).value || '';
+  if (!ok && !reason.trim()) { toast('Write the reason for rejecting.'); return; }
+  busy(b);
+  call('decideRetDel', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Retailer deleted.' : 'Kept the retailer.'); work(); }, function () { b.disabled = false; });
 }
 function retailerFields(r, areas) {
   var u = S.boot.user, vs = S.boot.verticals.filter(function (v) { return v.line === 'Retail'; });
@@ -1147,7 +1175,7 @@ function home() {
   if (S.boot.user.referrerOnly) return;
   callFast('myWork', {scope: 'mine'}, function (d) {
     var b = function (id, n, cls) { if ($('tb_' + id) && n) $('tb_' + id).innerHTML = '<span class="badge ' + (cls || 'amber') + '">' + n + '</span>'; };
-    b('work', d.tasks.length + (d.approvals || []).length + (d.payApprovals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
+    b('work', d.tasks.length + (d.approvals || []).length + (d.payApprovals || []).length + (d.retApprovals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
     b('svc', d.service); if (d.dsr) b('dsr', d.dsr.pending ? d.dsr.pending + ' to fill' : '');
   }, function () {});
 }
