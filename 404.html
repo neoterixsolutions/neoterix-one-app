@@ -258,9 +258,9 @@ function customers() {
   var ev = S.boot.verticals.filter(function (v) { return v.line !== 'Retail'; });
   if (S.cv === undefined) { try { S.cv = localStorage.getItem('cv_' + S.boot.user.name) || ''; } catch (e) { S.cv = ''; } }
   if (S.cv && !ev.some(function (v) { return v.id === S.cv; })) S.cv = '';
-  if (ev.length > 1) h += '<select id="c_vert" style="margin-top:8px;font-weight:600" onchange="setCv(this.value)"><option value="">All my verticals</option>' + ev.map(function (v) { return '<option value="' + v.id + '"' + (S.cv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
+  if (ev.length > 1) h += '<select id="c_vert" style="margin:10px 0 14px;font-weight:600" onchange="setCv(this.value)"><option value="">All my verticals</option>' + ev.map(function (v) { return '<option value="' + v.id + '"' + (S.cv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
   h += '<div class="two"><select id="c_stage" onchange="S.stage=this.value;loadList()"><option value="">All stages</option>' + S.boot.stages.map(function (s) { return '<option' + (S.stage === s.code ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '</select>' +
-    '<select id="c_sort" onchange="S.cs=this.value;loadList()">' + CUST_SORTS.map(function (x) { return '<option value="' + x[0] + '"' + (S.cs === x[0] ? ' selected' : '') + '>Sort: ' + x[1] + '</option>'; }).join('') + '</select></div><div id="list"><div class="load">Loading…</div></div>';
+    '<select id="c_sort" onchange="S.cs=this.value;loadList()">' + CUST_SORTS.map(function (x) { return '<option value="' + x[0] + '"' + (S.cs === x[0] ? ' selected' : '') + '>Sort: ' + x[1] + '</option>'; }).join('') + '</select></div><div id="list" style="margin-top:10px"><div class="load">Loading…</div></div>';
   set(h);
   var timer;
   $('q').addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { S.q = $('q').value; loadList(); }, 400); });
