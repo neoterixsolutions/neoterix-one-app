@@ -22,6 +22,10 @@ main{padding:12px 12px 90px;max-width:860px;margin:0 auto}
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;z-index:5;padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;background:none;padding:8px 2px 10px;font-size:11px;color:var(--m)}
 nav button.on{color:var(--b);font-weight:700} nav .i{display:block;font-size:20px;line-height:24px}
+.home{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile2{background:#fff;border:0;border-radius:14px;padding:16px 12px;min-height:118px;text-align:left;box-shadow:0 1px 3px rgba(16,24,40,.1);display:flex;flex-direction:column;gap:4px;position:relative;font:inherit;color:var(--t)}
+.tile2:active{background:#E8EEF8} .tile2 .ti{font-size:26px} .tile2 .tl{font-weight:700;font-size:16px} .tile2 .ts{font-size:12px;color:var(--m)} .tile2 .tb{position:absolute;top:10px;right:10px}
+header .hb{display:flex;gap:6px;align-items:center} details.sub{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
 .card{background:#fff;border-radius:12px;padding:12px 14px;margin:0 0 10px;box-shadow:0 1px 2px rgba(16,24,40,.06)}
 .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .muted{color:var(--m);font-size:13px} .h{font-size:18px;font-weight:700;margin:6px 0 10px}
@@ -62,12 +66,12 @@ select.sm{width:auto;padding:7px;font-size:13px}
 </style>
 </head>
 <body>
-<header id="hdr" style="display:none"><div><div class="t">Neoterix One App</div><div class="u" id="who"></div></div><button onclick="logout()">Logout</button></header>
+<header id="hdr" style="display:none"><div class="hb"><button id="hb_back" onclick="history.back()" aria-label="Back">←</button><div><div class="t">Neoterix One App</div><div class="u" id="who"></div></div></div><div class="hb"><button id="hb_home" onclick="go('home')">⌂ Home</button><button onclick="logout()">Logout</button></div></header>
 <main id="app"><div class="load">Loading…</div></main>
 <nav id="nav" style="display:none"></nav>
 <div class="toast" id="toast"></div>
 <script>
-var S = {token: null, boot: null, tab: 'work', stage: '', q: '', scope: 'mine'};
+var S = {token: null, boot: null, tab: 'home', stage: '', q: '', scope: 'mine'};
 
 function store(k, v) {
   try {
@@ -103,7 +107,7 @@ function showLogin(msg) {
   $('hdr').style.display = 'none'; $('nav').style.display = 'none';
   set('<div class="login card"><div class="logo">Neoterix One App</div><div class="muted" style="text-align:center">UGES · Neoterix</div>' +
     (msg ? '<div class="note">' + esc(msg) + '</div>' : '') +
-    '<label>Login ID</label><input id="lid" autocapitalize="none" autocomplete="username" placeholder="e.g. roma">' +
+    '<label>Login ID or registered mobile</label><input id="lid" autocapitalize="none" autocomplete="username" placeholder="e.g. roma or 98xxxxxxxx">' +
     '<label>PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="4–8 digits">' +
     '<button class="btn" id="lbtn" onclick="doLogin()">Log in</button></div>');
   $('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
@@ -137,6 +141,7 @@ function start() {
     if (d.user.mustChange) { showChangePin(true); return; }
     if (d.user.referrerOnly) S.tab = 'earn';
     $('hdr').style.display = 'flex';
+    if (d.portal) { $('who').textContent = d.user.name + ' · ' + d.user.typeName; $('hb_home').style.display = 'none'; pNav(); go(S.tab); return; }
     $('who').textContent = d.user.name + ' · ' + d.user.roles.map(function (r) { return d.roles[r] || r; }).join(', ');
     renderNav(); go(S.tab);
   });
@@ -154,11 +159,19 @@ function renderNav() {
   if (u.mgr) tabs.push(['dash', '▦', 'Dashboard']);
   if (u.admin) tabs.push(['admin', '⚙', 'Users']);
   }
-  $('nav').innerHTML = tabs.map(function (t) { return '<button id="nb_' + t[0] + '" onclick="go(\'' + t[0] + '\')"><span class="i">' + t[1] + '</span>' + t[2] + '</button>'; }).join('');
-  $('nav').style.display = 'flex';
+  $('nav').innerHTML = ''; $('nav').style.display = 'none';
 }
-function go(tab) {
+function go(tab, fromHistory) {
+  if (!fromHistory) { try { history.pushState({t: tab}, ''); } catch (e) {} }
+  if (['dsr', 'svc', 'dsrteam', 'logins', 'home'].indexOf(tab) > -1) {
+    if ($('hb_home')) $('hb_home').style.display = tab === 'home' ? 'none' : '';
+    if (tab === 'home') { S.tab = 'home'; return home(); }
+    S.tab = tab;
+    return tab === 'dsr' ? dsrScreen() : tab === 'svc' ? svcScreen(false) : tab === 'dsrteam' ? dsrTeamScreen() : portalAdmin();
+  }
+  if ($('hb_home') && !(S.boot && S.boot.portal)) $('hb_home').style.display = '';
   S.tab = tab;
+  if (S.boot && S.boot.portal) { var pb = document.querySelectorAll('nav button'); for (var j = 0; j < pb.length; j++) pb[j].className = ''; if ($('nb_' + tab)) $('nb_' + tab).className = 'on'; return pGo(tab); }
   var bs = document.querySelectorAll('nav button'); for (var i = 0; i < bs.length; i++) bs[i].className = '';
   if ($('nb_' + tab)) $('nb_' + tab).className = 'on';
   S.F = null; S.ST = null;
@@ -185,6 +198,9 @@ function work() {
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
     h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
     if (over) h += '<div class="note bad">' + over + ' task' + (over > 1 ? 's are' : ' is') + ' overdue.</div>';
+    if (d.service) h += '<div class="card item" onclick="svcScreen(false)"><div class="row"><b>Service requests</b><span class="badge ' + (d.service ? 'amber' : '') + '">' + (d.service || 0) + ' open</span></div></div>';
+    if (d.dsr && d.dsr.pending) h += '<div class="card item" onclick="dsrScreen()"><div class="row"><b>Daily sales summary</b><span class="badge ' + (d.dsr.pending ? 'amber' : 'green') + '">' + (d.dsr.pending ? d.dsr.pending + ' to fill today' : 'Done today') + '</span></div></div>';
+
     if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
     if ((d.approvals || []).length) {
       h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
@@ -212,20 +228,25 @@ function work() {
 
 // ---------------------------------------------------------------- customers
 function customers() {
-  var chips = '<span class="chip ' + (S.stage === '' ? 'on' : '') + '" onclick="S.stage=\'\';customers()">All active</span>' +
-    S.boot.stages.map(function (s) { return '<span class="chip ' + (S.stage === s.code ? 'on' : '') + '" onclick="S.stage=\'' + s.code + '\';customers()">' + esc(s.code) + '</span>'; }).join('');
-  set('<input id="q" placeholder="Search name, mobile, city, order ID" value="' + esc(S.q) + '"><div class="chips" style="margin-top:8px">' + chips + '</div><div id="list"><div class="load">Loading…</div></div>');
+  S.cf = S.cf || ''; S.cs = S.cs || 'stage'; S.cr = S.cr || '';
+  var h = '<input id="q" placeholder="Search name, mobile, city, order ID" value="' + esc(S.q) + '">' +
+    '<div class="chips" style="margin-top:8px">' + CUST_FILTERS.map(function (f) { return '<span class="chip ' + (S.cf === f[0] ? 'on' : '') + '" onclick="S.cf=\'' + f[0] + '\';S.cr=\'\';customers()">' + f[1] + '</span>'; }).join('') + '</div>';
+  if (S.cf === 'due') h += '<div class="chips"><span class="chip ' + (!S.cr ? 'on' : '') + '" onclick="S.cr=\'\';customers()">Any reason</span>' + S.boot.dueReasons.map(function (r, i) { return '<span class="chip ' + (S.cr === r ? 'on' : '') + '" onclick="S.cr=S.boot.dueReasons[' + i + '];customers()">' + esc(r.replace('Payment hold due to ', '').replace('Pendency ', '')) + '</span>'; }).join('') + '</div>';
+  h += '<div class="two"><select id="c_stage" onchange="S.stage=this.value;loadList()"><option value="">All stages</option>' + S.boot.stages.map(function (s) { return '<option' + (S.stage === s.code ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '</select>' +
+    '<select id="c_sort" onchange="S.cs=this.value;loadList()">' + CUST_SORTS.map(function (x) { return '<option value="' + x[0] + '"' + (S.cs === x[0] ? ' selected' : '') + '>Sort: ' + x[1] + '</option>'; }).join('') + '</select></div><div id="list"><div class="load">Loading…</div></div>';
+  set(h);
   var timer;
   $('q').addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { S.q = $('q').value; loadList(); }, 400); });
   loadList();
 }
 function loadList() {
-  call('orders', {q: S.q, stage: S.stage, all: !!S.q}, function (d) {
-    var h = '<div class="muted" style="margin-bottom:8px">' + d.total + ' customer' + (d.total === 1 ? '' : 's') + '</div>';
+  call('orders', {q: S.q, stage: S.stage, all: !!S.q, filter: S.cf, sort: S.cs, dueReason: S.cr}, function (d) {
+    var h = '<div class="muted" style="margin-bottom:8px">' + d.total + ' customer' + (d.total === 1 ? '' : 's') + (d.dueSum ? ' · total due ' + lakh(d.dueSum) : '') + '</div>';
     d.orders.forEach(function (o) {
       h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div>' +
         '<div class="row muted" style="margin-top:6px"><span>' + esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.OrderValue ? ' · ' + lakh(o.OrderValue) : '') + (o.SalesExec ? ' · ' + esc(o.SalesExec) : '') + '</span><span>' + (o.DaysInStage !== '' ? o.DaysInStage + ' d in stage' : '') + '</span></div>' +
-        (o.Balance > 0 && o.OrderValue ? '<div class="muted">Balance ' + lakh(o.Balance) + '</div>' : '') + '</div>';
+        (o.LeadTemp || o.CallBackDate ? '<div>' + (o.LeadTemp ? '<span class="badge ' + (o.LeadTemp === 'Hot' ? 'red' : o.LeadTemp === 'Warm' ? 'amber' : '') + '">' + esc(o.LeadTemp) + '</span> ' : '') + (o.CallBackDate ? '<span class="muted">call back ' + esc(o.CallBackDate) + '</span>' : '') + '</div>' : '') +
+        (o.Balance > 0 && o.OrderValue ? '<div class="muted">Balance ' + lakh(o.Balance) + (o.DueReason ? ' · <b>' + esc(o.DueReason) + '</b>' : '') + '</div>' : '') + '</div>';
     });
     if ($('list')) $('list').innerHTML = h;
   });
@@ -281,6 +302,7 @@ function progress(stage) {
   return '<div class="prog">' + ST.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
 }
 function openOrder(id) {
+  try { history.pushState({t: S.tab, sub: 1}, ''); } catch (e) {}
   S.cur = id; loading();
   call('order', {id: id}, function (d) { renderOrder(d); });
 }
@@ -310,8 +332,10 @@ function renderOrder(d) {
       s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
       if (d.gate && u.director && o.DirectorApproval !== 'Approved') h += '<button class="btn green" onclick="approveGate()">Approve supply (Director)</button>';
       h += '<label>Note (optional)</label><input id="tn_' + t.TaskID + '">';
+      if (!R && t.Stage === '01 Lead' && d.dropReasons) S.lead1 = lead1Box(o, t, d);
       h += '<div class="two">' + (s.fields.length ? '<button class="btn sec" onclick="saveTask(\'' + t.TaskID + '\')">Save</button>' : '') + '<button class="btn green" onclick="doneTask(\'' + t.TaskID + '\', this)">Done → next stage</button></div>';
       if (u.mgr) h += '<details><summary>Reassign</summary><select id="ra_' + t.TaskID + '"><option value="">Whole team</option>' + peopleFor(t.OwnerRole, o.Vertical).map(function (p) { return '<option' + (p === t.OwnerName ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select><button class="btn sec" onclick="reassign(\'' + t.TaskID + '\')">Reassign</button></details>';
+      if (S.lead1) { h += S.lead1; S.lead1 = null; }
     } else {
       h += '<div class="muted" style="margin-top:6px">Waiting on ' + esc(t.OwnerName || S.boot.roles[t.OwnerRole]) + '.</div>';
     }
@@ -321,6 +345,7 @@ function renderOrder(d) {
   // payments
   h += '<div class="st">Payments</div><div class="card"><div class="kv"><div class="k">Order value</div><div>' + inr(o.OrderValue) + '</div><div class="k">Received</div><div>' + inr(d.received) + '</div><div class="k">Balance</div><div><b>' + inr(d.balance) + '</b></div></div>';
   d.payments.forEach(function (p) { h += '<div class="act">' + esc(p.Date) + ' · ' + esc(p.Type) + ' · <b>' + inr(p.Amount) + '</b>' + (p.Mode ? ' · ' + esc(p.Mode) : '') + (p.Reference ? '<div class="muted">' + esc(p.Reference) + '</div>' : '') + '</div>'; });
+  if (!R && Number(o.OrderValue || 0) > d.received && ['01 Lead', '02 Site Survey', '03 Feasibility & Quote'].indexOf(o.Stage) < 0) h += '<label>Why is payment due?</label><div class="two"><select id="due_r"><option value="">— not set —</option>' + S.boot.dueReasons.map(function (r) { return '<option' + (o.DueReason === r ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select><button class="btn sec" onclick="saveDueReason()">Save reason</button></div>';
   h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + (R ? ['Advance', 'Other'] : S.boot.payTypes).map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
     '<label>Amount (Rs)</label><input id="py_amt" type="number" inputmode="decimal"><label>Date</label><input id="py_date" type="date" value="' + new Date().toISOString().slice(0, 10) + '">' +
     '<label>Mode</label><select id="py_mode">' + S.boot.payModes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Reference / UTR (optional)</label><input id="py_ref">' +
@@ -339,6 +364,7 @@ function renderOrder(d) {
   h += '<button class="btn" onclick="saveDetails()">Save details</button></details></div>';
 
   if (!R) h += incCard(d);
+  if (!R && d.access) h += accessCard('CUSTOMER', o.OrderID, d.access, o.Mobile);
 
   // manager actions
   if (u.mgr && o.Status === 'Active') {
@@ -383,6 +409,7 @@ function leadForm() {
   h += '<label>Customer name *</label><input id="l_name"><label>Mobile *</label><input id="l_mob" type="tel" inputmode="tel">';
   h += '<label>City / village</label><input id="l_city"><label>Address</label><textarea id="l_addr"></textarea>';
   h += '<label>Expected capacity (kW)</label><input id="l_kw" type="number" inputmode="decimal">';
+  h += '<label>Lead quality</label><select id="l_tmp"><option value="">— not yet —</option><option>Hot</option><option>Warm</option><option>Cold</option></select>';
   h += '<label>Lead type</label><select id="l_src"><option value="">— choose —</option>' + S.boot.fields.LeadType.o.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>';
   h += '<label>Sales executive</label><select id="l_se"></select>';
   h += '<label>Remark</label><input id="l_note"><button class="btn" id="l_btn" onclick="saveLead(false)">Save lead</button></div>';
@@ -394,7 +421,7 @@ function leadPeople() {
 }
 function saveLead(force) {
   var b = $('l_btn'); b.disabled = true;
-  call('createLead', {Vertical: $('l_v').value, CustomerName: $('l_name').value, Mobile: $('l_mob').value, City: $('l_city').value, Address: $('l_addr').value, CapacityKW: $('l_kw').value, LeadType: $('l_src').value, SalesExec: $('l_se').value, NextAction: $('l_note').value, force: force}, function (d) {
+  call('createLead', {Vertical: $('l_v').value, CustomerName: $('l_name').value, Mobile: $('l_mob').value, City: $('l_city').value, Address: $('l_addr').value, CapacityKW: $('l_kw').value, LeadType: $('l_src').value, LeadTemp: $('l_tmp') ? $('l_tmp').value : '', SalesExec: $('l_se').value, NextAction: $('l_note').value, force: force}, function (d) {
     b.disabled = false;
     if (d.duplicate) {
       if (confirmBox(d.duplicate.CustomerName + ' with this mobile is already active at ' + d.duplicate.Stage + '. Create a new lead anyway?')) saveLead(true); else openOrder(d.duplicate.OrderID);
@@ -411,6 +438,12 @@ function dashboard() {
     var t = d.total, h = (hasLine(true) ? '<div class="chips"><span class="chip on">EPC</span><span class="chip" onclick="S.rtab=\'rdash\';go(\'retail\')">Retail</span>' + (S.boot.warehouses.length ? '<span class="chip" onclick="go(\'stock\')">Stock</span>' : '') + '</div>' : '') + '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
     h += '<div class="tiles">' + [['Active orders', t.active], ['Booked this month', t.booked + ' · ' + t.bookedKW.toFixed(1) + ' kW'], ['Booking value', lakh(t.bookedValue)], ['Installed this month', t.installs + ' · ' + t.installsKW.toFixed(1) + ' kW'],
       ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    if (d.dsr && d.dsr.people.length) {
+      var dd = d.dsr.days;
+      h += '<div class="st">Daily sales updates (last 7 days)</div><div class="tbl"><table><tr><th>Name</th>' + dd.map(function (x) { return '<th>' + x.slice(8) + '</th>'; }).join('') + '<th>Full days</th></tr>' +
+        d.dsr.people.map(function (p) { return '<tr><td>' + esc(p.name) + '</td>' + p.days.map(function (n, i) { return '<td>' + (n === p.forms ? '✅' : n ? '◐' : (i === 6 ? '⏳' : '❌')) + '</td>'; }).join('') + '<td>' + p.week + '/7</td></tr>'; }).join('') +
+        '</table></div><div class="muted">✅ all forms filled · ◐ some · ❌ none · ⏳ today, not yet. <a href="#" onclick="go(\'dsrteam\');return false">Open team summaries</a></div>';
+    }
     h += '<div class="st">By vertical (this month)</div><div class="tbl"><table><tr><th>Vertical</th><th>Active</th><th>Leads</th><th>Booked</th><th>kW</th><th>Value</th><th>Installed</th><th>Collected</th><th>Balance</th><th>Overdue</th></tr>';
     d.verticals.forEach(function (v) { h += '<tr><td>' + esc(v.name) + '</td><td>' + v.active + '</td><td>' + v.leads + '</td><td>' + v.booked + '</td><td>' + v.bookedKW.toFixed(1) + '</td><td>' + lakh(v.bookedValue) + '</td><td>' + v.installs + '</td><td>' + lakh(v.collected) + '</td><td>' + lakh(v.balance) + '</td><td>' + (v.overdue ? '<b style="color:#C62828">' + v.overdue + '</b>' : 0) + '</td></tr>'; });
     h += '</table></div>';
@@ -429,7 +462,7 @@ function admin() {
   loading();
   call('users', {}, function (d) {
     S.adm = d;
-    var h = '<div class="row"><div class="h">Users · ' + d.users.length + '</div><button class="chip" onclick="editUser(null)">+ Add user</button></div>';
+    var h = '<div class="row"><div class="h">Users · ' + d.users.length + '</div><button class="chip" onclick="editUser(null)">+ Add user</button></div><button class="btn sec" onclick="portalAdmin()">Customer, influencer and retail partner logins</button>';
     d.users.forEach(function (x, i) {
       h += '<div class="card item" onclick="editUser(' + i + ')"><div class="row"><div class="name">' + esc(x.Name) + '</div>' + (x.Active === 'Yes' ? '' : '<span class="badge red">Inactive</span>') + (x.MustChangePin === 'Yes' ? ' <span class="badge amber">Not logged in yet</span>' : '') + '</div>' +
         '<div class="muted">Login: ' + esc(x.LoginID) + ' · ' + esc(String(x.Roles).split(',').map(function (r) { return S.boot.roles[r] || r; }).join(', ')) + '</div><div class="muted">Verticals: ' + esc(x.Verticals) + '</div></div>';
@@ -543,6 +576,7 @@ function renderRetailer(d) {
   h += '<div class="st">Kits and value by month</div><div class="tbl"><table><tr><th>Month</th><th>Kits</th><th>Value</th></tr>' + (d.months.length ? d.months.map(function (m) { return '<tr><td>' + esc(m.m) + '</td><td>' + m.kits + '</td><td>' + (m.value ? lakh(m.value) : '—') + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">No purchases recorded yet.</td></tr>') + '</table></div>';
   if (d.orders.length) { h += '<div class="st">Orders in the app</div>'; d.orders.forEach(function (o) { h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><span>' + esc(o.KitMix || '') + '</span>' + stageBadge(o.Stage, o.Overdue) + '</div><div class="muted">' + esc(o.OrderID) + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</div></div>'; }); }
   h += '<div class="st">Invoices and supplies</div><div class="card">' + (d.sales.length ? d.sales.map(function (s) { return '<div class="ln"><span class="nm">' + esc(s.Date) + ' · ' + esc(s.InvoiceNo || 'no invoice no.') + '<div class="muted">' + esc(s.KitMix || '') + ' · ' + esc(s.Source) + (s.Retail !== 'Yes' ? ' · not counted (' + esc(s.Retail) + ')' : '') + '</div></span><span style="text-align:right">' + (s.Kits !== '' ? '<b>' + s.Kits + '</b> kits' : '') + '<div class="muted">' + (s.Value ? inr(s.Value) : '') + '</div></span></div>'; }).join('') : '<span class="muted">None yet.</span>') + '</div>';
+  h += accessCard('RETAILER', r.RetailerID, d.access, r.Mobile);
   h += '<details><summary>Edit retailer details</summary><div class="card" id="rform">' + retailerFields(r, d.areas) + '<button class="btn" onclick="saveRetailerForm(\'' + r.RetailerID + '\')">Save</button></div></details>';
   h += '<div class="st">History</div><div class="card">' + (d.activity.length ? d.activity.map(function (a) { return '<div class="act"><span class="muted">' + esc(a.Time) + ' · ' + esc(a.User) + '</span><br>' + esc(a.Action) + ': ' + esc(a.Detail) + '</div>'; }).join('') : '<span class="muted">No follow-ups logged yet.</span>') + '</div>';
   set(h);
@@ -679,12 +713,13 @@ function decide(id, ok, b) {
 // ================================================================ REFER & EARN / INCENTIVES
 function earn() {
   loading();
-  call('myIncentive', {}, function (d) {
+  call('myIncentive', {month: S.earnM}, function (d) {
     S.earn = d;
     var h = '', u = S.boot.user;
     if (u.incViewer) h += '<div class="chips"><span class="chip on">Mine</span><span class="chip" onclick="incTeam()">Team incentives</span><span class="chip" onclick="incTeam(null,null,\'board\')">Champions board</span></div>';
     h += '<button class="btn green" onclick="referForm()">+ Refer a customer</button>';
-    h += '<div class="tiles" style="margin-top:10px">' + [['Incentive earned', inr(d.earned)], ['Payable in ' + d.payNowLabel + ' salary', inr(d.payNow)], ['Approved (all months)', inr(d.payable)], ['Pending (order not complete)', inr(d.pending)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    h += '<div class="chips" style="margin-top:8px">' + d.months.map(function (m) { return '<span class="chip ' + (m === d.month ? 'on' : '') + '" onclick="S.earnM=\'' + m + '\';earn()">' + (m === d.thisMonth ? 'This month' : m) + '</span>'; }).join('') + '</div>';
+    h += '<div class="tiles" style="margin-top:10px">' + [['Earned (' + (d.month === d.thisMonth ? 'this month' : d.month) + ' orders)', inr(d.earned)], ['Approved', inr(d.payable)], ['Pending (order not complete)', inr(d.pending)], ['Payable in ' + d.payNowLabel + ' salary', inr(d.payNow)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
     if (d.fse) h += '<div class="note ' + (d.fse.count >= d.fse.target ? 'ok' : '') + '">Orders this month: <b>' + d.fse.count + ' of ' + d.fse.target + '</b>' + (d.fse.count >= d.fse.target ? ' – self-lead (Direct Sales) incentive unlocked.' : ' – ' + (d.fse.target - d.fse.count) + ' more to unlock your self-lead (Direct Sales) incentive this month.') + '</div>';
     var b = d.bonus, tgt = function (l) { return b.isSales ? l.sales : l.nonSales; };
     var top = b.levels[b.levels.length - 1], pct = Math.min(100, Math.round(b.systems / tgt(top) * 100));
@@ -700,7 +735,7 @@ function earn() {
       h += '<div class="card"><div class="row"><b>' + esc(r.customer) + '</b><span class="badge ' + (r.stage === 'Completed' ? 'green' : r.stage === 'Not converted' ? 'red' : '') + '">' + esc(r.stage) + '</span></div><div class="muted">Referred ' + esc(r.date) + (r.kw ? ' · ' + esc(r.kw) + ' kW' : '') + '</div>' +
         (r.amt !== null ? '<div>Your incentive: <b>' + inr(r.amt) + '</b> · ' + esc(r.status) + '</div>' : '') + '</div>';
     });
-    var others = d.orders.filter(function (o) { return o.roles.indexOf('Referrer') < 0; });
+    var others = d.orders.filter(function (o) { return o.roles.indexOf('Referrer') < 0 && (d.month === 'all' || o.date.slice(0, 7) === d.month); });
     if (others.length) {
       h += '<div class="st">My other incentive orders · ' + others.length + '</div>';
       others.forEach(function (o) {
@@ -774,6 +809,290 @@ function incCard(d) {
   return h;
 }
 function saveInc() { call('saveIncentive', {id: S.cur, values: collect('incbox')}, function (r) { toast(r.changed ? 'Saved ' + r.changed + ' change(s).' : 'No changes.'); openOrder(S.cur); }); }
+// ================================================================ STAFF: app access, service requests
+function accessCard(kind, id, acc, mobile) {
+  if (!acc) return '';
+  var st = !acc.has ? 'No app login yet' : (!acc.active ? 'Login switched off' : (acc.notLoggedIn ? 'Login given – not used yet' : 'Using the app' + (acc.last ? ' (last ' + esc(String(acc.last).slice(0, 10)) + ')' : '')));
+  return '<div class="st">' + (kind === 'CUSTOMER' ? 'Customer app' : 'Retail partner app') + '</div><div class="card" id="acc_box"><div class="row"><span>' + st + '</span>' + (mobile ? '<span class="muted">' + esc(mobile) + '</span>' : '') + '</div>' +
+    '<button class="btn sec" onclick="giveAccess(\'' + kind + '\',\'' + id + '\',this)">' + (acc.has ? 'Reset app PIN and resend' : 'Give app login') + '</button></div>';
+}
+function giveAccess(kind, id, b) {
+  busy(b);
+  var p = {type: kind}; if (kind === 'CUSTOMER') p.orderId = id; else p.retailerId = id;
+  call('portalAccess', p, function (r) { showAccess(r, 'acc_box'); }, function () { b.disabled = false; });
+}
+function showAccess(r, box) {
+  $(box).innerHTML = '<div class="note ok">Login ready for <b>' + esc(r.name) + '</b>. Mobile: <b>' + esc(r.mobile) + '</b> · PIN: <b>' + esc(r.pin) + '</b></div>' +
+    '<a class="btn green" style="display:block;text-align:center;text-decoration:none" target="_blank" href="' + esc(r.wa) + '">Send on WhatsApp</a><div class="muted">They set their own PIN on first login.</div>';
+}
+function portalAdmin() {
+  loading();
+  call('portalUsers', {}, function (d) {
+    var u = S.boot.user, eV = S.boot.verticals.filter(function (v) { return v.line !== 'Retail'; });
+    var h = '<div class="h" style="margin-top:8px">App logins: customers and partners · ' + d.list.length + '</div>';
+    h += '<details class="card" id="inf_box"><summary><b>+ Add influencer</b></summary><label>Name *</label><input id="in_name"><label>Mobile *</label><input id="in_mob" type="tel" inputmode="tel"><label>City</label><input id="in_city">' +
+      '<label>Office (leads go here)</label><select id="in_v">' + eV.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + '</option>'; }).join('') + '</select><label>Note (who they are, terms agreed)</label><input id="in_note">' +
+      '<button class="btn" onclick="addInfluencer(this)">Create login</button></details>';
+    h += '<div class="muted">Customer logins are given from the customer\'s order; retail partner logins from the retailer screen.</div>';
+    d.list.forEach(function (x) {
+      h += '<div class="card"><div class="row"><b>' + esc(x.name) + '</b><span class="badge ' + (x.active !== 'Yes' ? 'red' : (x.notLoggedIn ? 'amber' : 'green')) + '">' + esc(x.active !== 'Yes' ? 'Off' : (x.notLoggedIn ? 'Not used yet' : 'Active')) + '</span></div>' +
+        '<div class="muted">' + esc(x.type) + ' · ' + esc(x.mobile) + (x.city ? ' · ' + esc(x.city) : '') + (x.vertical ? ' · ' + esc(x.vertical) : '') + (x.tempPin ? ' · temp PIN ' + esc(x.tempPin) : '') + '</div>' +
+        (u.mgr ? '<button class="chip" onclick="setPortal(\'' + x.id + '\',' + (x.active !== 'Yes') + ')">' + (x.active === 'Yes' ? 'Switch off' : 'Switch on') + '</button>' : '') + '</div>';
+    });
+    set(h);
+  });
+}
+function addInfluencer(b) {
+  busy(b);
+  call('portalAccess', {type: 'INFLUENCER', name: $('in_name').value, mobile: $('in_mob').value, city: $('in_city').value, vertical: $('in_v').value, notes: $('in_note').value}, function (r) { showAccess(r, 'inf_box'); $('inf_box').open = true; }, function () { b.disabled = false; });
+}
+function setPortal(id, on) { call('portalSetActive', {id: id, active: on}, function () { toast('Saved.'); portalAdmin(); }); }
+function svcScreen(all) {
+  loading();
+  call('svcList', {all: !!all, refresh: S.svcRef ? false : true}, function (d) {
+    S.svc = d; S.svcRef = 1;
+    var h = '<div class="chips"><span class="chip ' + (all ? '' : 'on') + '" onclick="svcScreen(false)">Open</span><span class="chip ' + (all ? 'on' : '') + '" onclick="svcScreen(true)">All</span></div>';
+    h += '<div class="h">Service requests · ' + d.list.length + '</div>';
+    if (d.canNew) h += '<details class="card" id="sn_box"><summary><b>+ Log a complaint (customer phoned in)</b></summary><label>Customer mobile</label><input id="sv_mob" type="tel" inputmode="tel" placeholder="finds the customer\'s order">' +
+      '<label>Customer name</label><input id="sv_name"><label>Office</label><select id="sv_vt">' + d.verticals.map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + '</option>'; }).join('') + '</select>' +
+      '<label>Tata complaint no. (ask the customer to call ' + esc(d.tataNo) + ')</label><input id="sv_tata"><label>Nature of complaint</label><select id="sv_cat">' + d.cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+      '<label>Description</label><input id="sv_desc"><label>Assign to</label><select id="sv_as"><option value="">Default for the office</option>' + d.people.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select>' +
+      '<button class="btn" onclick="svcNew(this)">Save complaint</button></details>';
+    h += '<datalist id="eng_list">' + d.people.map(function (p) { return '<option value="' + esc(p) + '">'; }).join('') + '</datalist>';
+    if (!d.list.length) h += '<div class="card muted">No service requests.</div>';
+    d.list.forEach(function (s, i) {
+      h += '<div class="card"><div class="row"><b>' + esc(s.customer) + '</b><span class="badge ' + (s.status === 'Closed' ? 'green' : 'amber') + '">' + esc(s.status) + '</span></div>' +
+        '<div class="muted">' + esc(String(s.at).slice(0, 16)) + ' · ' + esc(s.vertical) + (s.mobile ? ' · <a href="tel:' + esc(s.mobile) + '">' + esc(s.mobile) + '</a>' : '') + (s.kw ? ' · ' + esc(s.kw) + ' kW' : '') + (s.source ? ' · ' + esc(s.source) : '') + '</div>' +
+        (s.address ? '<div class="muted">' + esc(s.address) + '</div>' : '') +
+        '<div><b>' + esc(s.cat) + '</b>' + (s.desc ? ': ' + esc(s.desc) : '') + '</div><div class="muted">Tata complaint no: <b>' + esc(s.tata || '-') + '</b>' + (s.pref ? ' · prefers ' + esc(s.pref) : '') + ' · Assigned: ' + esc(s.assigned || '-') + '</div>' +
+        (s.solution ? '<div class="muted">Visit: ' + esc(s.engineer) + ' – ' + esc(s.solution) + (s.resolution ? ' (' + esc(s.resolution) + ')' : '') + '</div>' : '') +
+        (s.notes ? '<div class="muted" style="white-space:pre-line">' + esc(s.notes) + '</div>' : '') + (s.status === 'Closed' ? '<div class="muted">Closed ' + esc(String(s.closedAt).slice(0, 16)) + ' by ' + esc(s.closedBy) + (s.csn ? ' (CSN ' + esc(s.csn) + ')' : '') + '</div>' : '');
+      if (s.status !== 'Closed') h += '<details id="sv_' + i + '"><summary>Assign / update</summary><label>Assigned to</label><select id="sa_' + i + '"><option value="">—</option>' + d.people.map(function (p) { return '<option' + (p === s.assigned ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>' +
+        '<label>Status</label><select id="ss_' + i + '">' + d.statuses.filter(function (x) { return x !== 'Closed'; }).map(function (x) { return '<option' + (x === s.status ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
+        '<label>Tata complaint no</label><input id="st_' + i + '" value="' + esc(s.tata || '') + '"><label>Note</label><input id="sn_' + i + '"><button class="btn sec" onclick="svcSave(' + i + ',this,false)">Save</button></details>' +
+        '<details id="vr_' + i + '"><summary>Visit report (goes to the Google sheet)</summary><label>Engineer who attended *</label><input id="ve_' + i + '" list="eng_list" value="' + esc(s.engineer || s.assigned || '') + '">' +
+        '<label>Tentative distance (km)</label><input id="vd_' + i + '" type="number" inputmode="numeric"><label>Nature of complaint</label><select id="vc_' + i + '">' + d.cats.map(function (c) { return '<option' + (c === s.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>' +
+        '<div class="two"><div><label>Called inverter company?</label><select id="vi_' + i + '"><option>No</option><option>Yes</option></select></div><div><label>Inverter complaint no.</label><input id="vn_' + i + '"></div></div>' +
+        '<label>Solution provided *</label><input id="vs_' + i + '"><label>Concern</label><select id="vx_' + i + '" onchange="$(\'vcw_' + i + '\').style.display=this.value===\'Fully Resolved\'?\'block\':\'none\'">' + d.resolved.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' +
+        '<div id="vcw_' + i + '"><label>CSN No. (customer gets it from Tata) *</label><input id="vk_' + i + '"></div><button class="btn" onclick="svcSave(' + i + ',this,true)">Save visit report</button></details>';
+      h += '</div>';
+    });
+    set(h);
+  });
+}
+function svcSave(i, b, visit) {
+  var s = S.svc.list[i], p = {id: s.id};
+  if (visit) { p.engineer = $('ve_' + i).value; p.distance = $('vd_' + i).value; p.category = $('vc_' + i).value; p.inverterCall = $('vi_' + i).value; p.inverterNo = $('vn_' + i).value; p.solution = $('vs_' + i).value; p.resolution = $('vx_' + i).value; p.csn = $('vk_' + i).value; }
+  else { p.assigned = $('sa_' + i).value; p.status = $('ss_' + i).value; p.tata = $('st_' + i).value; p.note = $('sn_' + i).value; }
+  busy(b);
+  call('svcUpdate', p, function () { toast(visit ? 'Visit report saved and added to the Google sheet.' : 'Saved.'); svcScreen(false); }, function () { b.disabled = false; });
+}
+function svcNew(b) {
+  busy(b);
+  call('svcNew', {mobile: $('sv_mob').value, name: $('sv_name').value, vertical: $('sv_vt').value, tata: $('sv_tata').value, category: $('sv_cat').value, description: $('sv_desc').value, assigned: $('sv_as').value}, function () { toast('Complaint logged.'); svcScreen(false); }, function () { b.disabled = false; });
+}
+
+// ================================================================ PORTAL (customers, influencers, retail partners)
+function pNav() {
+  var t = S.boot.user.type, tabs = t === 'CUSTOMER' ? [['p_home', '☀', 'My solar'], ['p_svc', '🔧', 'Service'], ['p_refer', '★', 'Refer & Earn']]
+    : t === 'INFLUENCER' ? [['p_dash', '▦', 'Dashboard'], ['p_refer', '★', 'Refer']] : [['p_ord', '☰', 'My orders'], ['p_new', '+', 'Place order'], ['p_warr', '✓', 'Warranty']];
+  $('nav').innerHTML = tabs.map(function (x) { return '<button id="nb_' + x[0] + '" onclick="go(\'' + x[0] + '\')"><span class="i">' + x[1] + '</span>' + x[2] + '</button>'; }).join('');
+  $('nav').style.display = 'flex';
+  if (!S.tab || S.tab.indexOf('p_') !== 0) S.tab = tabs[0][0];
+}
+function pGo(tab) {
+  if (S.P && tab !== 'p_new') return pRender(tab);
+  loading();
+  call('pHome', {}, function (d) { S.P = d; pRender(tab); });
+}
+function pReload(tab) { S.P = null; pGo(tab); }
+function pRender(tab) {
+  var d = S.P, h = '';
+  if (tab === 'p_home') {
+    if (!d.orders.length) h += '<div class="card muted">We could not find a booked solar order on your mobile number yet. If you have just booked, it will appear here once the order is confirmed.</div>';
+    d.orders.forEach(function (o) {
+      h += '<div class="card"><div class="row"><div class="name" style="font-size:18px">' + esc(o.kw ? o.kw + ' kW rooftop solar' : 'Rooftop solar') + '</div><span class="badge ' + (o.closed ? 'green' : '') + '">' + esc(o.now) + '</span></div><div class="muted">' + esc(o.id) + (o.city ? ' · ' + esc(o.city) : '') + '</div>' +
+        o.steps.map(function (s) { return '<div class="ln"><span class="nm">' + (s.done ? '✅ ' : s.now ? '🔵 ' : '⚪ ') + esc(s.name) + '</span>' + (s.now ? '<b>Now</b>' : '') + '</div>'; }).join('') +
+        (o.contact ? '<a class="btn sec" style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="tel:' + esc(o.contact.mobile) + '">Call ' + esc(o.contact.name) + ' (your coordinator)</a>' : '') + '</div>';
+      h += '<div class="st">Payments</div><div class="card"><div class="kv"><div class="k">Order value</div><div>' + inr(o.value) + '</div><div class="k">Paid</div><div>' + inr(o.received) + '</div><div class="k">Balance</div><div><b>' + inr(o.balance) + '</b></div>' +
+        (o.mode === 'Loan' ? '<div class="k">Loan</div><div>' + esc(o.loan || 'In process') + '</div>' : '') + '</div>' + o.payments.map(function (p) { return '<div class="act">' + esc(p.date) + ' · ' + esc(p.type) + ' · <b>' + inr(p.amount) + '</b>' + (p.mode ? ' · ' + esc(p.mode) : '') + '</div>'; }).join('') + '</div>';
+      h += '<div class="st">Status</div><div class="card"><div class="kv">' + (o.installed ? '<div class="k">Installed on</div><div>' + esc(o.installed) + '</div>' : '') + (o.netMeter ? '<div class="k">Net meter</div><div>' + esc(o.netMeter) + '</div>' : '') +
+        (o.subsidy ? '<div class="k">Subsidy</div><div>' + esc(o.subsidy) + '</div>' : '') + (o.handover ? '<div class="k">Handed over</div><div>' + esc(o.handover) + '</div>' : '') + '</div></div>';
+      h += '<div class="st">Warranty</div><div class="card">' + (o.warranty ? o.warranty.map(function (w) { return '<div class="ln"><span class="nm">' + esc(w.part) + ' (' + w.years + ' yrs)</span><span class="badge ' + (w.active ? 'green' : 'red') + '">' + (w.active ? 'Valid till ' : 'Expired ') + esc(w.till) + '</span></div>'; }).join('') : '<span class="muted">Starts from the handover date.</span>') + '</div>';
+    });
+  } else if (tab === 'p_svc') {
+    h += '<div class="card"><div class="h">Need service?</div><div><b>Step 1.</b> Call Tata Power Solar toll-free and register your complaint. ' + esc(S.boot.tataHint) + '</div>' +
+      '<a class="btn green" style="display:block;text-align:center;text-decoration:none;margin:8px 0" href="tel:' + esc(S.boot.tataNo.replace(/\s/g, '')) + '">Call ' + esc(S.boot.tataNo) + '</a>' +
+      '<div><b>Step 2.</b> Enter the complaint number Tata gives you, so our team can follow it up.</div>';
+    if (d.orders.length) {
+      h += (d.orders.length > 1 ? '<label>Solar system</label><select id="sv_o">' + d.orders.map(function (o) { return '<option value="' + esc(o.id) + '">' + esc((o.kw || '') + ' kW · ' + o.id) + '</option>'; }).join('') + '</select>' : '<input type="hidden" id="sv_o" value="' + esc(d.orders[0].id) + '">') +
+        '<label>Tata complaint number *</label><input id="sv_t"><label>What is the problem? *</label><select id="sv_c"><option value="">— choose —</option>' + S.boot.svcCats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+        '<label>Details</label><textarea id="sv_d"></textarea><label>Best time for a visit / call</label><input id="sv_p"><button class="btn" id="sv_b" onclick="pSvc()">Send to Neoterix team</button>';
+    } else h += '<div class="muted">Service requests open once your system is installed.</div>';
+    h += '<div class="muted" style="margin-top:6px"><b>Step 3.</b> When the problem is fixed, Tata sends you a CSN on your mobile. Enter it below to close the request.</div></div>';
+    h += '<div class="st">My requests</div>' + (d.service.length ? '' : '<div class="card muted">No service requests yet.</div>');
+    d.service.forEach(function (s, i) {
+      h += '<div class="card"><div class="row"><b>' + esc(s.cat) + '</b><span class="badge ' + (s.status === 'Closed' ? 'green' : 'amber') + '">' + esc(s.status) + '</span></div><div class="muted">' + esc(String(s.at).slice(0, 10)) + ' · Tata no ' + esc(s.tata) + (s.assigned ? ' · ' + esc(s.assigned) + ' is following up' : '') + '</div>';
+      if (s.status !== 'Closed') h += '<label>CSN / OTP from Tata (to close)</label><input id="csn_' + i + '"><button class="btn sec" onclick="pClose(' + i + ',this)">Close request</button>';
+      h += '</div>';
+    });
+  } else if (tab === 'p_refer' || tab === 'p_dash') {
+    var r = d.ref, t = r.totals;
+    if (tab === 'p_dash') {
+      h += '<div class="h">Hello ' + esc(S.boot.user.name) + '</div><div class="tiles">' + [['Leads given', t.leads], ['Converted (booked)', t.booked + ' · ' + t.conv + '%'], ['Installed', t.done], ['Earned', inr(t.earned)], ['Approved for payout', inr(t.payable)], ['Pending', inr(t.pending)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+      h += '<div class="st">Month by month</div><div class="tbl"><table><tr><th>Month</th><th>Leads</th><th>Converted</th><th>Earned</th></tr>' + (r.months.length ? r.months.map(function (m) { return '<tr><td>' + m.m + '</td><td>' + m.leads + '</td><td>' + m.booked + '</td><td>' + inr(m.earned) + '</td></tr>'; }).join('') : '<tr><td colspan="4">No leads yet</td></tr>') + '</table></div>';
+    } else {
+      h += '<div class="card"><div class="h">Refer a friend</div><div class="muted">Know someone who wants rooftop solar? Earn ' + inr(r.rates.small) + ' (3–5 kW) or ' + inr(r.rates.big) + ' (6–10 kW) when their system is installed and fully paid.</div>' +
+        '<label>Name *</label><input id="pr_n"><label>Mobile *</label><input id="pr_m" type="tel" inputmode="tel"><label>City / village</label><input id="pr_c"><label>Approx. size (kW, if known)</label><input id="pr_k" type="number" inputmode="decimal"><label>Note</label><input id="pr_x">' +
+        '<button class="btn green" id="pr_b" onclick="pRefer()">Send referral</button></div>';
+      h += '<div class="tiles">' + [['Referred', t.leads], ['Converted', t.booked], ['Earned', inr(t.earned)], ['Approved', inr(t.payable)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    }
+    h += '<div class="st">My referrals · ' + r.list.length + '</div>' + (r.list.length ? '' : '<div class="card muted">No referrals yet.</div>');
+    r.list.forEach(function (x) { h += '<div class="card"><div class="row"><b>' + esc(x.name) + '</b><span class="badge ' + (x.done ? 'green' : x.lost ? 'red' : '') + '">' + esc(x.stage) + '</span></div><div class="muted">' + esc(x.date) + (x.kw ? ' · ' + esc(x.kw) + ' kW' : '') + '</div>' + (x.booked ? '<div>Your earning: <b>' + inr(x.amt) + '</b> · ' + esc(x.payable ? 'Approved' + (x.payout ? ' (' + x.payout + ')' : '') : 'after installation and full payment') + '</div>' : '') + '</div>'; });
+  } else if (tab === 'p_ord' || tab === 'p_warr') {
+    if (tab === 'p_ord') {
+      h += '<div class="h">' + esc(d.retailer.name) + '</div>' + (d.contact ? '<a class="btn sec" style="display:block;text-align:center;text-decoration:none" href="tel:' + esc(d.contact.mobile) + '">Call ' + esc(d.contact.name) + ' (Neoterix sales)</a>' : '');
+      h += '<div class="st">Orders · ' + d.orders.length + '</div>' + (d.orders.length ? '' : '<div class="card muted">No orders in the app yet. Tap "Place order".</div>');
+      d.orders.forEach(function (o) {
+        h += '<div class="card"><div class="row"><b>' + esc(o.kitMix) + '</b><span class="badge ' + (o.status === 'Completed' ? 'green' : o.status === 'Cancelled' ? 'red' : '') + '">' + esc(o.status) + '</span></div>' +
+          '<div style="background:#E8EEF8;border-radius:8px;height:8px;margin:6px 0"><div style="background:var(--g);height:8px;border-radius:8px;width:' + Math.round(Math.min(o.step, o.steps) / o.steps * 100) + '%"></div></div>' +
+          '<div class="muted">' + esc(o.id) + ' · ' + esc(o.date) + ' · placed by ' + esc(o.by) + '</div><div class="kv">' + (o.value ? '<div class="k">Value</div><div>' + inr(o.value) + '</div><div class="k">Paid</div><div>' + inr(o.received) + '</div><div class="k">Balance</div><div><b>' + inr(o.balance) + '</b></div>' : '') +
+          (o.invoice ? '<div class="k">Invoice</div><div>' + esc(o.invoice) + '</div>' : '') + (o.dispatched ? '<div class="k">Dispatched</div><div>' + esc(o.dispatched) + '</div>' : '') + (o.delivered ? '<div class="k">Delivered</div><div>' + esc(o.delivered) + '</div>' : '') + '</div></div>';
+      });
+      h += '<div class="st">Purchase history (invoices)</div><div class="card">' + (d.sales.length ? d.sales.map(function (s) { return '<div class="ln"><span class="nm">' + esc(s.date) + ' · ' + esc(s.invoice || '') + '<div class="muted">' + esc(s.kitMix || (s.kits ? s.kits + ' kit(s)' : '')) + '</div></span><b>' + inr(s.value) + '</b></div>'; }).join('') : '<span class="muted">No invoices yet.</span>') + '</div>';
+    } else {
+      var w = d.orders.filter(function (o) { return o.warranty || o.serials; });
+      h += '<div class="h">Kit warranty</div>' + (w.length ? '' : '<div class="card muted">Warranty shows here once Neoterix registers it on the Tata app for your kits.</div>');
+      w.forEach(function (o) {
+        h += '<div class="card"><div class="row"><b>' + esc(o.kitMix) + '</b><span class="muted">' + esc(o.id) + '</span></div>' + (o.warrantyRef ? '<div class="muted">Registration: ' + esc(o.warrantyRef) + '</div>' : '') +
+          (o.warranty ? o.warranty.map(function (x) { return '<div class="ln"><span class="nm">' + esc(x.part) + ' (' + x.years + ' yrs)</span><span class="badge ' + (x.active ? 'green' : 'red') + '">' + (x.active ? 'Valid till ' : 'Expired ') + esc(x.till) + '</span></div>'; }).join('') : '<div class="muted">Not registered yet.</div>') +
+          (o.serials ? '<div class="muted" style="white-space:pre-line">Serial nos: ' + esc(o.serials) + '</div>' : '') + '</div>';
+      });
+    }
+  } else if (tab === 'p_new') {
+    var kp = S.boot.kitPrices || {}, hasP = Object.keys(kp).length > 0;
+    h += '<div class="card" id="po_box"><div class="h">Place a kit order</div>' + (hasP ? '<div class="muted">' + S.boot.kitSizes.filter(function (k) { return kp[k]; }).map(function (k) { return esc(k) + ': ' + inr(kp[k]); }).join(' · ') + ' (per kit)</div>' : '') + '<label>Kits needed</label><div oninput="pTotal()">' + kitGrid('KitMix', '') + '</div><div id="po_tot" class="note" style="display:none"></div>' +
+      '<label>Panel type</label><select id="po_p"><option value="">— any / as discussed —</option>' + S.boot.panelTypes.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' +
+      '<label>Note (delivery, urgency)</label><input id="po_n"><button class="btn green" id="po_b" onclick="pOrder()">Send order</button><div class="muted">Our sales team will confirm price and payment. 100% advance before dispatch.</div></div>';
+  }
+  set(h);
+}
+function pTotal() {
+  var kp = S.boot.kitPrices || {}, ins = $('po_box').querySelectorAll('input[data-size]'), t = 0, all = true, any = false;
+  for (var i = 0; i < ins.length; i++) { var q = Number(ins[i].value || 0); if (!q) continue; any = true; var pr = kp[ins[i].getAttribute('data-size')]; if (pr) t += pr * q; else all = false; }
+  var el = $('po_tot'); if (!el) return;
+  el.style.display = any && Object.keys(kp).length ? 'block' : 'none';
+  el.innerHTML = 'Order value: <b>' + inr(t) + '</b>' + (all ? '' : ' + kits without a listed price (sales will confirm)');
+}
+function pSvc() {
+  var b = $('sv_b'); busy(b);
+  call('pService', {orderId: $('sv_o').value, tataNo: $('sv_t').value, category: $('sv_c').value, description: $('sv_d').value, preferredTime: $('sv_p').value}, function () { toast('Sent. Our team will follow up with Tata.'); pReload('p_svc'); }, function () { b.disabled = false; });
+}
+function pClose(i, b) { busy(b); call('pServiceUpdate', {id: S.P.service[i].id, csn: $('csn_' + i).value}, function () { toast('Request closed. Thank you!'); pReload('p_svc'); }, function () { b.disabled = false; }); }
+function pRefer() {
+  var b = $('pr_b'); busy(b);
+  call('pRefer', {CustomerName: $('pr_n').value, Mobile: $('pr_m').value, City: $('pr_c').value, CapacityKW: $('pr_k').value, Note: $('pr_x').value}, function () { toast('Thank you! Our team will call them.'); pReload('p_refer'); }, function () { b.disabled = false; });
+}
+function pOrder() {
+  var b = $('po_b'); busy(b);
+  call('pROrder', {KitMix: kitMixFrom($('po_box').querySelector('[data-kits]')), PanelType: $('po_p').value, Note: $('po_n').value}, function () { toast('Order sent to Neoterix sales.'); S.tab = 'p_ord'; pReload('p_ord'); pNav(); }, function () { b.disabled = false; });
+}
+// ================================================================ DAILY SALES SUMMARY
+function dsrScreen(date) {
+  loading();
+  call('dsrMine', {date: date}, function (d) {
+    S.dsr = d;
+    var y = new Date(Date.now() - 864e5 + 5.5 * 3600e3).toISOString().slice(0, 10);
+    var h = '<div class="chips"><span class="chip ' + (d.date === d.today ? 'on' : '') + '" onclick="dsrScreen()">Today</span><span class="chip ' + (d.date !== d.today ? 'on' : '') + '" onclick="dsrScreen(\'' + y + '\')">Yesterday</span></div>';
+    h += '<div class="h">Daily sales summary · ' + esc(d.date) + '</div>';
+    if (!d.forms.length) h += '<div class="card muted">No daily summary is set up for your role.</div>';
+    d.forms.forEach(function (f, i) {
+      var def = d.defs[f.kind];
+      h += '<div class="card" id="dsr_' + i + '"><div class="row"><b>' + esc(f.label) + '</b><span class="badge ' + (f.done ? 'green' : 'amber') + '">' + (f.done ? 'Submitted' : 'Pending') + '</span></div><div class="muted">' + esc(f.vname) + (f.suggested ? ' · figures the app already knows are filled in – correct them if needed' : '') + '</div>';
+      def.fields.forEach(function (x) {
+        var v = f.values[x[0]]; v = v === undefined || v === null ? '' : v;
+        h += '<label>' + esc(x[1]) + (x[3] ? ' *' : '') + '</label>';
+        if (x[2] === 'select') h += '<select data-k="' + x[0] + '"><option value="">— choose —</option>' + x[4].map(function (o) { return '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+        else h += '<input data-k="' + x[0] + '" value="' + esc(v) + '"' + (x[2] === 'num' ? ' type="number" inputmode="numeric" min="0"' : '') + '>';
+      });
+      h += '<button class="btn" onclick="dsrSave(' + i + ',this)">' + (f.done ? 'Update summary' : 'Submit summary') + '</button></div>';
+    });
+    set(h);
+  });
+}
+function dsrSave(i, b) {
+  var f = S.dsr.forms[i], vals = {}, els = $('dsr_' + i).querySelectorAll('[data-k]');
+  for (var j = 0; j < els.length; j++) vals[els[j].getAttribute('data-k')] = els[j].value;
+  busy(b);
+  call('dsrSave', {kind: f.kind, vertical: f.vertical, date: S.dsr.date, values: vals}, function (r) { toast(r.updated ? 'Summary updated.' : 'Summary submitted. Thank you!'); dsrScreen(S.dsr.date === S.dsr.today ? null : S.dsr.date); }, function () { b.disabled = false; });
+}
+function dsrTeamScreen(date) {
+  loading();
+  call('dsrTeam', {date: date}, function (d) {
+    var h = '<div class="card"><label>Date</label><input type="date" value="' + esc(d.date) + '" onchange="dsrTeamScreen(this.value)"></div>';
+    h += '<div class="h">Daily sales summaries · ' + esc(d.date) + '</div>';
+    if (!d.kinds.length) h += '<div class="card muted">No summaries set up yet.</div>';
+    d.kinds.forEach(function (k) {
+      var nf = k.fields.filter(function (f) { return f[0] !== 'Remarks'; });
+      h += '<div class="st">' + esc(k.label) + ' · ' + k.rows.length + ' submitted</div>';
+      if (k.missing.length) h += '<div class="note bad">Not submitted: ' + esc(k.missing.join(', ')) + '</div>';
+      if (k.rows.length) h += '<div class="tbl"><table><tr><th>Name</th>' + nf.map(function (f) { return '<th>' + esc(f[1]) + '</th>'; }).join('') + '<th>Remarks</th></tr>' +
+        k.rows.map(function (r) { return '<tr><td>' + esc(r.name) + '<div class="muted">' + esc(r.vertical) + '</div></td>' + nf.map(function (f) { return '<td>' + (f[0] === 'Value' ? inr(r[f[0]]) : esc(r[f[0]])) + '</td>'; }).join('') + '<td>' + esc(r.Remarks || '') + '</td></tr>'; }).join('') + '</table></div>';
+      var pf = k.fields.filter(function (f) { return f[2] === 'num'; });
+      if (k.period.length) h += '<div class="muted" style="margin-top:6px">Total ' + esc(d.from) + ' to ' + esc(d.to) + '</div><div class="tbl"><table><tr><th>Name</th><th>Days</th>' + pf.map(function (f) { return '<th>' + esc(f[1]) + '</th>'; }).join('') + '</tr>' +
+        k.period.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + r.days + '</td>' + pf.map(function (f) { return '<td>' + (f[0] === 'Value' ? inr(r[f[0]] || 0) : (r[f[0]] || 0)) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></div>';
+    });
+    set(h);
+  });
+}
+// ================================================================ HOME (big tiles) + back
+function homeTiles() {
+  var u = S.boot.user, t = [];
+  if (u.referrerOnly) return [['earn', '★', 'Refer & Earn', 'Refer customers, see your earnings']];
+  t.push(['work', '✓', 'My work', 'Tasks waiting on you']);
+  if (hasLine(false)) t.push(['cust', '☰', 'Customers', 'EPC orders – search, filter, sort']);
+  if (hasLine(true)) t.push(['retail', '◆', 'Retail', 'Retailers and kit orders']);
+  if (S.boot.warehouses.length) t.push(['stock', '▤', 'Stock', 'Warehouse stock and entries']);
+  t.push(['lead', '+', 'New lead / order', 'Add a customer or retail order']);
+  if (u.dsr) t.push(['dsr', '✎', 'Daily sales summary', 'Fill today\'s summary']);
+  if (u.service) t.push(['svc', '🔧', 'Service requests', 'Customer complaints']);
+  if (u.canRefer) t.push(['earn', '★', u.incViewer ? 'Refer & incentives' : 'Refer & Earn', u.incViewer ? 'Referrals, team incentives, Champions' : 'Your referrals and earnings']);
+  if (u.mgr) t.push(['dash', '▦', 'Dashboard', 'Orders, collections, daily updates']);
+  if (u.mgr) t.push(['dsrteam', '☷', 'Team daily summaries', 'Who filled, figures, month totals']);
+  if (u.portalCreator) t.push(['logins', '👤', 'Customer & partner logins', 'Customers, influencers, retailers']);
+  if (u.admin) t.push(['admin', '⚙', 'Staff users', 'Logins, roles, PINs']);
+  return t;
+}
+function home() {
+  var h = '<div class="h">Hello ' + esc(S.boot.user.name.split(' ')[0]) + '</div><div class="home">' + homeTiles().map(function (x) {
+    return '<button class="tile2" onclick="go(\'' + x[0] + '\')"><span class="ti">' + x[1] + '</span><span class="tl">' + esc(x[2]) + '</span><span class="ts">' + esc(x[3]) + '</span><span class="tb" id="tb_' + x[0] + '"></span></button>';
+  }).join('') + '</div>';
+  set(h);
+  if (S.boot.user.referrerOnly) return;
+  call('myWork', {scope: 'mine'}, function (d) {
+    var b = function (id, n, cls) { if ($('tb_' + id) && n) $('tb_' + id).innerHTML = '<span class="badge ' + (cls || 'amber') + '">' + n + '</span>'; };
+    b('work', d.tasks.length + (d.approvals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
+    b('svc', d.service); if (d.dsr) b('dsr', d.dsr.pending ? d.dsr.pending + ' to fill' : '');
+  }, function () {});
+}
+window.addEventListener('popstate', function (e) {
+  if (!S.boot) return;
+  var st = e.state;
+  go(st && st.t ? st.t : 'home', true);
+});
+// ---- customers list: filters and sorting
+var CUST_FILTERS = [['', 'All active'], ['mine', 'My orders'], ['due', 'Payment due'], ['overdue', 'Overdue'], ['callback', 'Call-backs due'], ['Hot', 'Hot'], ['Warm', 'Warm'], ['Cold', 'Cold']];
+var CUST_SORTS = [['stage', 'Stage'], ['days', 'Days stuck (most first)'], ['balance', 'Balance due (highest)'], ['value', 'Order value (highest)'], ['newest', 'Newest first'], ['callback', 'Call-back date']];
+function lead1Box(o, t, d) {
+  return '<details class="sub"><summary>Call back later (park Warm / Cold lead)</summary><div id="pk_box"><label>Lead quality</label><select id="pk_t"><option>Warm</option><option>Cold</option><option>Hot</option></select>' +
+    '<label>Call back on</label><input id="pk_d" type="date" value="' + new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) + '"><label>Note</label><input id="pk_n" placeholder="e.g. will decide after Diwali">' +
+    '<button class="btn sec" onclick="parkLead()">Park lead</button></div></details>' +
+    '<details class="sub"><summary>Not interested – close lead</summary><label>Reason</label><select id="dr_r">' + d.dropReasons.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' +
+    '<label>Note</label><input id="dr_n"><button class="btn sec" style="color:var(--r)" onclick="dropLead()">Close lead</button></details>';
+}
+function parkLead() { call('parkLead', {id: S.cur, temp: $('pk_t').value, date: $('pk_d').value, note: $('pk_n').value}, function () { toast('Lead parked – it will come back on the call-back date.'); openOrder(S.cur); }); }
+function dropLead() { call('dropLead', {id: S.cur, reason: $('dr_r').value, note: $('dr_n').value}, function () { toast('Lead closed.'); go(S.tab); }); }
+function saveDueReason() { call('saveOrder', {id: S.cur, values: {DueReason: $('due_r').value}}, function () { toast('Saved.'); openOrder(S.cur); }); }
 function moveHistory() {
   var d = S.stk;
   set('<button class="chip" onclick="stock()">← Stock</button><div class="h" style="margin-top:8px">' + esc(d.warehouse.name) + ' · history</div><input id="mh_q" placeholder="Search item, party, invoice, serial"><div id="mh" class="card" style="margin-top:8px"><div class="load">Loading…</div></div>');
