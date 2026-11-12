@@ -255,6 +255,10 @@ function customers() {
   var h = '<input id="q" placeholder="Search name, mobile, city, order ID" value="' + esc(S.q) + '">' +
     '<div class="chips" style="margin-top:8px">' + CUST_FILTERS.map(function (f) { return '<span class="chip ' + (S.cf === f[0] ? 'on' : '') + '" onclick="S.cf=\'' + f[0] + '\';S.cr=\'\';customers()">' + f[1] + '</span>'; }).join('') + '</div>';
   if (S.cf === 'due') h += '<div class="chips"><span class="chip ' + (!S.cr ? 'on' : '') + '" onclick="S.cr=\'\';customers()">Any reason</span>' + S.boot.dueReasons.map(function (r, i) { return '<span class="chip ' + (S.cr === r ? 'on' : '') + '" onclick="S.cr=S.boot.dueReasons[' + i + '];customers()">' + esc(r.replace('Payment hold due to ', '').replace('Pendency ', '')) + '</span>'; }).join('') + '</div>';
+  var ev = S.boot.verticals.filter(function (v) { return v.line !== 'Retail'; });
+  if (S.cv === undefined) { try { S.cv = localStorage.getItem('cv_' + S.boot.user.name) || ''; } catch (e) { S.cv = ''; } }
+  if (S.cv && !ev.some(function (v) { return v.id === S.cv; })) S.cv = '';
+  if (ev.length > 1) h += '<select id="c_vert" style="margin-top:8px;font-weight:600" onchange="setCv(this.value)"><option value="">All my verticals</option>' + ev.map(function (v) { return '<option value="' + v.id + '"' + (S.cv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>';
   h += '<div class="two"><select id="c_stage" onchange="S.stage=this.value;loadList()"><option value="">All stages</option>' + S.boot.stages.map(function (s) { return '<option' + (S.stage === s.code ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '</select>' +
     '<select id="c_sort" onchange="S.cs=this.value;loadList()">' + CUST_SORTS.map(function (x) { return '<option value="' + x[0] + '"' + (S.cs === x[0] ? ' selected' : '') + '>Sort: ' + x[1] + '</option>'; }).join('') + '</select></div><div id="list"><div class="load">Loading…</div></div>';
   set(h);
@@ -262,9 +266,15 @@ function customers() {
   $('q').addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { S.q = $('q').value; loadList(); }, 400); });
   loadList();
 }
+function setCv(v) { S.cv = v; try { localStorage.setItem('cv_' + S.boot.user.name, v); } catch (e) { } loadList(); }
 function loadList() {
   S.seq = (S.seq || 0) + 1;
-  callFast('orders', {q: S.q, stage: S.stage, all: !!S.q, filter: S.cf, sort: S.cs, dueReason: S.cr}, function (d) {
+  callFast('orders', {q: S.q, stage: S.stage, all: !!S.q, filter: S.cf, sort: S.cs, dueReason: S.cr, vertical: S.cv || ''}, function (d) {
+    var sel = $('c_vert');
+    if (sel && sel.options && d.vcount) for (var i = 0; i < sel.options.length; i++) {
+      var o0 = sel.options[i], all = 0; for (var k in d.vcount) all += d.vcount[k];
+      o0.text = o0.value ? o0.text.replace(/ \(\d+\)$/, '') + ' (' + (d.vcount[o0.value] || 0) + ')' : 'All my verticals (' + all + ')';
+    }
     var h = '<div class="muted" style="margin-bottom:8px">' + d.total + ' customer' + (d.total === 1 ? '' : 's') + (d.dueSum ? ' · total due ' + lakh(d.dueSum) : '') + '</div>';
     d.orders.forEach(function (o) {
       h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div>' +
