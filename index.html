@@ -623,6 +623,7 @@ function retailerList() {
     h += '<div class="muted" style="margin:8px 0">' + d.total + ' retailer' + (d.total === 1 ? '' : 's') + '</div>';
     d.retailers.forEach(function (r) {
       h += '<div class="card item" onclick="openRetailer(\'' + r.RetailerID + '\')"><div class="row"><div class="name">' + esc(r.Name) + (r.New ? ' <span class="badge green">New</span>' : '') + '</div>' + bucketBadge(r.Days) + '</div>' +
+        '<div class="row" style="margin-top:6px">' + (r.Mobile ? '<a class="chip" style="text-decoration:none" href="tel:' + esc(r.Mobile) + '" onclick="event.stopPropagation()">📞 Call ' + esc(r.Mobile) + '</a>' : '<span class="chip" onclick="event.stopPropagation();addRetMobile(\'' + r.RetailerID + '\')">+ Add mobile</span>') + '</div>' +
         (r.New ? '<div class="muted">Added ' + esc(r.CreatedAt) + ' by ' + esc(r.CreatedBy || '') + '</div>' : '') + (r.Pending ? '<div class="muted">Payment pending <b>' + inr(r.Pending) + '</b></div>' : '') + (r.DelPending ? '<div class="muted"><span class="badge amber">Delete waiting for ' + esc(r.DelPending) + '</span></div>' : '') +
         '<div class="row muted" style="margin-top:4px"><span>' + esc(r.Area || 'No area') + (r.SalesExec ? ' · ' + esc(r.SalesExec) : '') + '</span><span>' + (r.KitsMonth ? '<b>' + r.KitsMonth + '</b> kits this month' : (r.Kits90 ? r.Kits90 + ' kits / 90 d' : '')) + '</span></div>' +
         (r.NextFollowUp ? '<div class="muted">' + (r.Due ? '<b style="color:#B26A00">Follow-up due ' : 'Next follow-up ') + esc(r.NextFollowUp) + (r.Due ? '</b>' : '') + '</div>' : '') + (r.OpenOrders ? '<div class="muted">' + r.OpenOrders + ' open order(s)</div>' : '') + '</div>';
@@ -637,6 +638,7 @@ function renderRetailer(d) {
     '<div class="muted">' + esc(r.Vertical) + ' · ' + esc(r.Area || 'No area') + (r.City ? ' · ' + esc(r.City) : '') + (r.SalesExec ? ' · ' + esc(r.SalesExec) : '') + '</div>' +
     (r.GSTIN ? '<div class="muted">GSTIN ' + esc(r.GSTIN) + '</div>' : '') + '<div style="margin-top:6px">Last order: <b>' + esc(d.last || 'none yet') + '</b></div>' +
     (r.NextFollowUp ? '<div>Next follow-up: <b>' + esc(String(r.NextFollowUp).slice(0, 10)) + '</b>' + (r.FollowUpNote ? ' · ' + esc(r.FollowUpNote) : '') + '</div>' : '') +
+    (!r.Mobile ? '<button class="btn sec" onclick="addRetMobile(\'' + r.RetailerID + '\',function(){openRetailer(\'' + r.RetailerID + '\')})">+ Add mobile number</button>' : '') +
     (r.Mobile ? '<div class="two"><a class="btn sec" style="text-align:center;text-decoration:none" href="tel:' + esc(r.Mobile) + '">Call</a><a class="btn sec" style="text-align:center;text-decoration:none" target="_blank" href="https://wa.me/91' + esc(String(r.Mobile).replace(/\D/g, '').slice(-10)) + '">WhatsApp</a></div>' : '<div class="muted">No mobile number saved yet.</div>') +
     '<button class="btn green" onclick="newOrderFor(\'' + r.RetailerID + '\',\'' + r.Vertical + '\')">+ New order for this retailer</button></div>';
   h += '<div class="st">Log follow-up</div><div class="card"><label>How</label><select id="fu_mode"><option>Call</option><option>Visit</option><option>WhatsApp</option></select>' +
@@ -651,6 +653,11 @@ function renderRetailer(d) {
   else if (d.canDelete) h += '<details><summary>Delete this retailer</summary><div class="card"><div class="muted">' + (d.delDirect ? 'The retailer is removed from all lists. Past invoices and orders stay.' : 'Goes to ' + esc(d.delApprover) + ' for approval. Past invoices and orders stay.') + '</div><label>Reason *</label><input id="rdel_r" placeholder="e.g. duplicate of another retailer, shop closed"><button class="btn sec" onclick="delRetailer(\'' + r.RetailerID + '\',this)">' + (d.delDirect ? 'Delete retailer' : 'Ask to delete') + '</button></div></details>';
   h += '<div class="st">History</div><div class="card">' + (d.activity.length ? d.activity.map(function (a) { return '<div class="act"><span class="muted">' + esc(a.Time) + ' · ' + esc(a.User) + '</span><br>' + esc(a.Action) + ': ' + esc(a.Detail) + '</div>'; }).join('') : '<span class="muted">No follow-ups logged yet.</span>') + '</div>';
   set(h);
+}
+function addRetMobile(id, after) {
+  var m = window.prompt('Retailer mobile number (10 digits)');
+  if (!m) return;
+  call('setRetMobile', {id: id, mobile: m}, function () { toast('Mobile saved.'); if (after) after(); else retailerList(); });
 }
 function delRetailer(id, b) {
   var reason = $('rdel_r').value;
@@ -725,7 +732,7 @@ function retailDash() {
   });
 }
 function markSale(id, v) { call('setSaleRetail', {id: id, retail: v}, function () { toast('Saved.'); retailDash(); }); }
-function importBB(b) { busy(b); call('importBillbook', {}, function (r) { toast('Imported: ' + r.added + ' new, ' + r.updated + ' updated, ' + r.newRetailers + ' new retailer(s).'); retailDash(); }, function () { b.disabled = false; }); }
+function importBB(b) { busy(b); call('importBillbook', {}, function (r) { toast('Imported: ' + r.added + ' new, ' + r.updated + ' updated, ' + r.newRetailers + ' new retailer(s).' + (r.deletedMatched ? ' Deleted retailers kept out: ' + r.deletedMatched : '')); retailDash(); }, function () { b.disabled = false; }); }
 
 // ================================================================ STOCK
 function stock() {
