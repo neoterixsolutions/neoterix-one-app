@@ -28,7 +28,7 @@ nav button.on{color:var(--b);font-weight:700} nav .i{display:block;font-size:20p
 header .hb{display:flex;gap:6px;align-items:center} details.sub{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
 .card{background:#fff;border-radius:12px;padding:12px 14px;margin:0 0 10px;box-shadow:0 1px 2px rgba(16,24,40,.06)}
 .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
-.muted{color:var(--m);font-size:13px} .h{font-size:18px;font-weight:700;margin:6px 0 10px}
+.lnk{color:#5aa9ff;text-decoration:underline;cursor:pointer;font-size:13px} .muted{color:var(--m);font-size:13px} .h{font-size:18px;font-weight:700;margin:6px 0 10px}
 .name{font-weight:700;font-size:16px}
 .badge{display:inline-block;font-size:11px;padding:3px 8px;border-radius:10px;background:#E8EEF8;color:var(--b);white-space:nowrap}
 .badge.red{background:#FDECEC;color:var(--r)} .badge.green{background:#E7F4EA;color:var(--g)} .badge.amber{background:#FFF3E0;color:var(--y)}
@@ -224,7 +224,11 @@ function work() {
     if (d.service) h += '<div class="card item" onclick="svcScreen(false)"><div class="row"><b>Service requests</b><span class="badge ' + (d.service ? 'amber' : '') + '">' + (d.service || 0) + ' open</span></div></div>';
     if (d.dsr && d.dsr.pending) h += '<div class="card item" onclick="dsrScreen()"><div class="row"><b>Daily sales summary</b><span class="badge ' + (d.dsr.pending ? 'amber' : 'green') + '">' + (d.dsr.pending ? d.dsr.pending + ' to fill today' : 'Done today') + '</span></div></div>';
 
-    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if ((d.payApprovals || []).length) {
+      h += '<div class="st">Payments to approve · ' + d.payApprovals.length + '</div>';
+      d.payApprovals.forEach(function (r) { h += payReqCard(r); });
+    }
+    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
     if ((d.approvals || []).length) {
       h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
       d.approvals.forEach(function (r) { h += reqCard(r, true); });
@@ -379,7 +383,10 @@ function renderOrder(d) {
 
   // payments
   h += '<div class="st">Payments</div><div class="card"><div class="kv"><div class="k">Order value</div><div>' + inr(o.OrderValue) + '</div><div class="k">Received</div><div>' + inr(d.received) + '</div><div class="k">Balance</div><div><b>' + inr(d.balance) + '</b></div></div>';
-  d.payments.forEach(function (p) { h += '<div class="act">' + esc(p.Date) + ' · ' + esc(p.Type) + ' · <b>' + inr(p.Amount) + '</b>' + (p.Mode ? ' · ' + esc(p.Mode) : '') + (p.Reference ? '<div class="muted">' + esc(p.Reference) + '</div>' : '') + '</div>'; });
+  S.pays = d.payments;
+  d.payments.forEach(function (p) { h += '<div class="act" id="pay_' + esc(p.PaymentID) + '">' + esc(String(p.Date).slice(0, 10)) + ' · ' + esc(p.Type) + ' · <b>' + inr(p.Amount) + '</b>' + (p.Mode ? ' · ' + esc(p.Mode) : '') + (p.Reference ? '<div class="muted">' + esc(p.Reference) + '</div>' : '') +
+    (d.payEdit ? '<div><span class="lnk" onclick="payEditBox(\'' + esc(p.PaymentID) + '\')">Edit / delete</span></div>' : '') + '</div>'; });
+  (d.payPending || []).forEach(function (r) { h += '<div class="act"><span class="badge amber">Waiting for ' + esc(r.approver) + '</span> ' + esc(r.date) + ' · ' + esc(r.type) + ' · <b>' + inr(r.amount) + '</b>' + (r.mode ? ' · ' + esc(r.mode) : '') + '<div class="muted">Entered by ' + esc(r.by) + ' · not counted in Received until approved</div></div>'; });
   if (!R && Number(o.OrderValue || 0) > d.received && ['01 Lead', '02 Site Survey', '03 Feasibility & Quote'].indexOf(o.Stage) < 0) h += '<label>Why is payment due?</label><div class="two"><select id="due_r"><option value="">— not set —</option>' + S.boot.dueReasons.map(function (r) { return '<option' + (o.DueReason === r ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select><button class="btn sec" onclick="saveDueReason()">Save reason</button></div>';
   h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + (R ? ['Advance', 'Other'] : S.boot.payTypes).map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
     '<label>Amount (Rs)</label><input id="py_amt" type="number" inputmode="decimal"><label>Date</label><input id="py_date" type="date" value="' + new Date().toISOString().slice(0, 10) + '">' +
@@ -424,7 +431,27 @@ function doneTask(tid, el) {
 function approveGate() { call('saveOrder', {id: S.cur, values: {DirectorApproval: 'Approved'}}, function () { toast('Supply approved.'); openOrder(S.cur); }); }
 function reassign(tid) { call('reassign', {taskId: tid, ownerName: $('ra_' + tid).value}, function () { toast('Reassigned.'); openOrder(S.cur); }); }
 function addPay() {
-  call('addPayment', {id: S.cur, type: $('py_type').value, amount: $('py_amt').value, date: $('py_date').value, mode: $('py_mode').value, ref: $('py_ref').value}, function () { toast('Payment saved.'); openOrder(S.cur); });
+  call('addPayment', {id: S.cur, type: $('py_type').value, amount: $('py_amt').value, date: $('py_date').value, mode: $('py_mode').value, ref: $('py_ref').value}, function (r) { toast(r && r.pending ? 'Sent to ' + r.approver + ' for approval. It counts once approved.' : 'Payment saved.'); openOrder(S.cur); });
+}
+function payEditBox(pid) {
+  var p = (S.pays || []).filter(function (x) { return x.PaymentID === pid; })[0], el = $('pay_' + pid);
+  if (!p || !el) return;
+  var types = S.boot.payTypes.concat(['Advance']), opt = function (list, v) { return list.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join(''); };
+  el.innerHTML = '<label>Type</label><select id="pe_type">' + opt(types, p.Type) + '</select><label>Amount (Rs)</label><input id="pe_amt" type="number" inputmode="decimal" value="' + esc(p.Amount) + '">' +
+    '<label>Date</label><input id="pe_date" type="date" value="' + esc(String(p.Date).slice(0, 10)) + '"><label>Mode</label><select id="pe_mode"><option value="">—</option>' + opt(S.boot.payModes, p.Mode) + '</select>' +
+    '<label>Reference / UTR</label><input id="pe_ref" value="' + esc(p.Reference || '') + '"><label>Reason for change</label><input id="pe_note" placeholder="Needed to delete">' +
+    '<div class="two" style="margin-top:8px"><button class="btn" onclick="payEditSave(\'' + pid + '\',this)">Save changes</button><button class="btn sec" onclick="payDelete(\'' + pid + '\',this)">Delete payment</button></div>';
+}
+function payEditSave(pid, b) {
+  busy(b);
+  call('editPayment', {pid: pid, type: $('pe_type').value, amount: $('pe_amt').value, date: $('pe_date').value, mode: $('pe_mode').value, ref: $('pe_ref').value, note: $('pe_note').value}, function () { toast('Payment updated.'); openOrder(S.cur); }, function () { b.disabled = false; });
+}
+function payDelete(pid, b) {
+  var reason = $('pe_note').value;
+  if (!reason.trim()) { toast('Write the reason for deleting.'); return; }
+  if (!confirmBox('Delete this payment entry?')) return;
+  busy(b);
+  call('deletePayment', {pid: pid, reason: reason}, function () { toast('Payment deleted.'); openOrder(S.cur); }, function () { b.disabled = false; });
 }
 function saveDetails() { call('saveOrder', {id: S.cur, values: collect('detbox')}, function (r) { toast(r.changed ? 'Saved ' + r.changed + ' change(s).' : 'No changes.'); openOrder(S.cur); }); }
 function moveStage() { if (!$('mvn').value) { toast('Give a reason.'); return; } call('setStage', {id: S.cur, stage: $('mv').value, note: $('mvn').value}, function () { toast('Stage moved.'); openOrder(S.cur); }); }
@@ -738,6 +765,20 @@ function reqCard(r, act) {
     (r.status !== 'Pending' ? '<div class="muted">' + esc(r.status) + ' by ' + esc(r.decidedBy) + ' · ' + esc(r.decidedAt) + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' : '');
   if (act && r.canDecide) h += '<input id="rr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decide(\'' + r.id + '\',true,this)">Approve</button><button class="btn sec" onclick="decide(\'' + r.id + '\',false,this)">Reject</button></div>';
   return h + '</div>';
+}
+function payReqCard(r) {
+  var h = '<div class="card"><div class="row"><b>' + esc(r.customer || r.order) + '</b><span class="badge amber">' + esc(r.vertical) + '</span></div>' +
+    '<div class="row" style="margin-top:4px"><span>' + esc(r.type) + ' · ' + esc(r.date) + (r.mode ? ' · ' + esc(r.mode) : '') + '</span><b>' + inr(r.amount) + '</b></div>' +
+    (r.ref ? '<div class="muted">Ref: ' + esc(r.ref) + '</div>' : '') + '<div class="muted">Entered by ' + esc(r.by) + ' · ' + esc(r.at) + ' · <span class="lnk" onclick="openOrder(\'' + esc(r.order) + '\')">open order</span></div>';
+  if (r.canDecide) h += '<div class="two" style="margin-top:6px"><input id="pa_' + r.id + '" type="number" inputmode="decimal" value="' + esc(r.amount) + '" title="Correct the amount if needed"><input id="pr_' + r.id + '" placeholder="Reason (needed to reject)"></div>' +
+    '<div class="two"><button class="btn green" onclick="decidePay(\'' + r.id + '\',true,this)">Approve</button><button class="btn sec" onclick="decidePay(\'' + r.id + '\',false,this)">Reject</button></div>';
+  return h + '</div>';
+}
+function decidePay(id, ok, b) {
+  var reason = ($('pr_' + id) || {}).value || '';
+  if (!ok && !reason.trim()) { toast('Write the reason for rejecting.'); return; }
+  busy(b);
+  call('decidePayment', {id: id, approve: ok, reason: reason, amount: ($('pa_' + id) || {}).value}, function (r) { toast(r.status === 'Approved' ? 'Payment approved.' : 'Payment rejected.'); work(); }, function () { b.disabled = false; });
 }
 function decide(id, ok, b) {
   var reason = ($('rr_' + id) || {}).value || '';
@@ -1106,7 +1147,7 @@ function home() {
   if (S.boot.user.referrerOnly) return;
   callFast('myWork', {scope: 'mine'}, function (d) {
     var b = function (id, n, cls) { if ($('tb_' + id) && n) $('tb_' + id).innerHTML = '<span class="badge ' + (cls || 'amber') + '">' + n + '</span>'; };
-    b('work', d.tasks.length + (d.approvals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
+    b('work', d.tasks.length + (d.approvals || []).length + (d.payApprovals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
     b('svc', d.service); if (d.dsr) b('dsr', d.dsr.pending ? d.dsr.pending + ' to fill' : '');
   }, function () {});
 }
