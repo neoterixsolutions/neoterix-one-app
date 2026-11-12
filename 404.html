@@ -100,6 +100,17 @@ function call(action, payload, ok, fail) {
     })
     .catch(function (e) { toast(navigator.onLine ? 'Network problem: ' + e.message : 'You are offline. Check mobile data.'); if (fail) fail({error: e.message}); });
 }
+// Show the last copy straight away, then refresh from the server (only re-draws if the data changed and the person is still on that screen).
+function callFast(action, payload, cb) {
+  var key = 'c_' + String(S.token).slice(0, 8) + '_' + action + '_' + JSON.stringify(payload || {}), seq = S.seq, old = store(key);
+  if (old) { try { cb(JSON.parse(old), true); } catch (e) { old = null; } }
+  call(action, payload, function (d) {
+    var txt = JSON.stringify(d);
+    try { store(key, txt); } catch (e) { }
+    if (S.seq === seq && txt !== old) cb(d, false);
+  });
+}
+function clearLocal() { try { Object.keys(localStorage).forEach(function (k) { if (/^(c_|boot_)/.test(k)) localStorage.removeItem(k); }); } catch (e) { } }
 if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }
 
 // ---------------------------------------------------------------- login
@@ -131,12 +142,23 @@ function savePin() {
   if ($('p1').value !== $('p2').value) { toast('The two PINs do not match.'); return; }
   call('changePin', {pin: $('p1').value}, function () { toast('PIN saved.'); start(); });
 }
-function logout() { call('logout', {}, function () {}); store('tok', null); S.token = null; showLogin(); }
+function logout() { call('logout', {}, function () {}); clearLocal(); store('tok', null); S.token = null; showLogin(); }
 
 // ---------------------------------------------------------------- shell
 function start() {
-  loading();
+  var bk = 'boot_' + String(S.token).slice(0, 8), cached = store(bk), shown = false;
+  if (cached) { try { var cb = JSON.parse(cached); if (!cb.user.mustChange) { applyBoot(cb); shown = true; } } catch (e) { } }
+  if (!shown) loading();
   call('boot', {}, function (d) {
+    var txt = JSON.stringify(d);
+    try { store(bk, txt); } catch (e) { }
+    if (shown && txt === cached) return;
+    if (shown) { S.boot = d; if (S.tab === 'home' && !d.portal) home(); return; }
+    applyBoot(d);
+  });
+}
+function applyBoot(d) {
+  {
     S.boot = d;
     if (d.user.mustChange) { showChangePin(true); return; }
     if (d.user.referrerOnly) S.tab = 'earn';
@@ -144,7 +166,7 @@ function start() {
     if (d.portal) { $('who').textContent = d.user.name + ' · ' + d.user.typeName; $('hb_home').style.display = 'none'; pNav(); go(S.tab); return; }
     $('who').textContent = d.user.name + ' · ' + d.user.roles.map(function (r) { return d.roles[r] || r; }).join(', ');
     renderNav(); go(S.tab);
-  });
+  }
 }
 function hasLine(retail) { return S.boot.verticals.some(function (v) { return retail ? v.line === 'Retail' : v.line !== 'Retail'; }); }
 function renderNav() {
@@ -162,6 +184,7 @@ function renderNav() {
   $('nav').innerHTML = ''; $('nav').style.display = 'none';
 }
 function go(tab, fromHistory) {
+  S.seq = (S.seq || 0) + 1;
   if (!fromHistory) { try { history.pushState({t: tab}, ''); } catch (e) {} }
   if (['dsr', 'svc', 'dsrteam', 'logins', 'home'].indexOf(tab) > -1) {
     if ($('hb_home')) $('hb_home').style.display = tab === 'home' ? 'none' : '';
@@ -192,7 +215,7 @@ function due(d) {
 // ---------------------------------------------------------------- my work
 function work() {
   loading();
-  call('myWork', {scope: S.scope}, function (d) {
+  callFast('myWork', {scope: S.scope}, function (d) {
     var u = S.boot.user, h = '';
     if (u.mgr) h += '<div class="chips"><span class="chip ' + (S.scope === 'mine' ? 'on' : '') + '" onclick="S.scope=\'mine\';work()">My tasks</span><span class="chip ' + (S.scope === 'team' ? 'on' : '') + '" onclick="S.scope=\'team\';work()">Whole team</span></div>';
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
@@ -240,7 +263,8 @@ function customers() {
   loadList();
 }
 function loadList() {
-  call('orders', {q: S.q, stage: S.stage, all: !!S.q, filter: S.cf, sort: S.cs, dueReason: S.cr}, function (d) {
+  S.seq = (S.seq || 0) + 1;
+  callFast('orders', {q: S.q, stage: S.stage, all: !!S.q, filter: S.cf, sort: S.cs, dueReason: S.cr}, function (d) {
     var h = '<div class="muted" style="margin-bottom:8px">' + d.total + ' customer' + (d.total === 1 ? '' : 's') + (d.dueSum ? ' · total due ' + lakh(d.dueSum) : '') + '</div>';
     d.orders.forEach(function (o) {
       h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div>' +
@@ -302,6 +326,7 @@ function progress(stage) {
   return '<div class="prog">' + ST.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
 }
 function openOrder(id) {
+  S.seq = (S.seq || 0) + 1;
   try { history.pushState({t: S.tab, sub: 1}, ''); } catch (e) {}
   S.cur = id; loading();
   call('order', {id: id}, function (d) { renderOrder(d); });
@@ -434,7 +459,7 @@ function saveLead(force) {
 // ---------------------------------------------------------------- dashboard
 function dashboard() {
   loading();
-  call('dashboard', {}, function (d) {
+  callFast('dashboard', {}, function (d) {
     var t = d.total, h = (hasLine(true) ? '<div class="chips"><span class="chip on">EPC</span><span class="chip" onclick="S.rtab=\'rdash\';go(\'retail\')">Retail</span>' + (S.boot.warehouses.length ? '<span class="chip" onclick="go(\'stock\')">Stock</span>' : '') + '</div>' : '') + '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
     h += '<div class="tiles">' + [['Active orders', t.active], ['Booked this month', t.booked + ' · ' + t.bookedKW.toFixed(1) + ' kW'], ['Booking value', lakh(t.bookedValue)], ['Installed this month', t.installs + ' · ' + t.installsKW.toFixed(1) + ' kW'],
       ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
@@ -1069,7 +1094,7 @@ function home() {
   }).join('') + '</div>';
   set(h);
   if (S.boot.user.referrerOnly) return;
-  call('myWork', {scope: 'mine'}, function (d) {
+  callFast('myWork', {scope: 'mine'}, function (d) {
     var b = function (id, n, cls) { if ($('tb_' + id) && n) $('tb_' + id).innerHTML = '<span class="badge ' + (cls || 'amber') + '">' + n + '</span>'; };
     b('work', d.tasks.length + (d.approvals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
     b('svc', d.service); if (d.dsr) b('dsr', d.dsr.pending ? d.dsr.pending + ' to fill' : '');
