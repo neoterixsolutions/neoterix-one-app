@@ -213,10 +213,33 @@ function due(d) {
 }
 
 // ---------------------------------------------------------------- my work
+function setWv(v) { S.wv = v; try { localStorage.setItem('wv_' + S.boot.user.name, v); } catch (e) { } work(); }
 function work() {
   loading();
   callFast('myWork', {scope: S.scope}, function (d) {
     var u = S.boot.user, h = '';
+    // vertical filter (shown when the user has more than one vertical)
+    var vs = S.boot.verticals || [];
+    if (S.wv === undefined) { try { S.wv = localStorage.getItem('wv_' + u.name) || ''; } catch (e) { S.wv = ''; } }
+    if (S.wv && !vs.some(function (v) { return v.id === S.wv; })) S.wv = '';
+    var cnt = {}, add = function (v) { if (v) cnt[v] = (cnt[v] || 0) + 1; };
+    d.tasks.forEach(function (t) { add(t.order.Vertical || t.Vertical); });
+    (d.payApprovals || []).forEach(function (r) { add(r.vertical); });
+    (d.retApprovals || []).forEach(function (r) { add(r.vertical); });
+    (d.follow || []).forEach(function (r) { add(r.Vertical); });
+    if (vs.length > 1) {
+      var tot = 0; for (var k in cnt) tot += cnt[k];
+      h += '<select style="width:100%;margin:6px 0 14px;font-weight:600" onchange="setWv(this.value)"><option value="">All my verticals (' + tot + ')</option>' + vs.map(function (v) { return '<option value="' + v.id + '"' + (S.wv === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + ' (' + (cnt[v.id] || 0) + ')</option>'; }).join('') + '</select>';
+    }
+    if (S.wv) {
+      d = JSON.parse(JSON.stringify(d));
+      var sv = vs.filter(function (v) { return v.id === S.wv; })[0] || {}, keep = function (v) { return v === S.wv; };
+      d.tasks = d.tasks.filter(function (t) { return keep(t.order.Vertical || t.Vertical); });
+      d.payApprovals = (d.payApprovals || []).filter(function (r) { return keep(r.vertical); });
+      d.retApprovals = (d.retApprovals || []).filter(function (r) { return keep(r.vertical); });
+      d.follow = (d.follow || []).filter(function (r) { return keep(r.Vertical); });
+      d.approvals = (d.approvals || []).filter(function (r) { return r.verts ? r.verts.split(',').map(function (x) { return x.trim(); }).indexOf(S.wv) > -1 : (!r.company || r.company === sv.company); });
+    }
     if (u.mgr) h += '<div class="chips"><span class="chip ' + (S.scope === 'mine' ? 'on' : '') + '" onclick="S.scope=\'mine\';work()">My tasks</span><span class="chip ' + (S.scope === 'team' ? 'on' : '') + '" onclick="S.scope=\'team\';work()">Whole team</span></div>';
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
     h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
