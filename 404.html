@@ -226,6 +226,7 @@ function work() {
     d.tasks.forEach(function (t) { add(t.order.Vertical || t.Vertical); });
     (d.payApprovals || []).forEach(function (r) { add(r.vertical); });
     (d.retApprovals || []).forEach(function (r) { add(r.vertical); });
+    (d.stageApprovals || []).forEach(function (r) { add(r.vertical); });
     (d.follow || []).forEach(function (r) { add(r.Vertical); });
     if (vs.length > 1) {
       var tot = 0; for (var k in cnt) tot += cnt[k];
@@ -237,6 +238,8 @@ function work() {
       d.tasks = d.tasks.filter(function (t) { return keep(t.order.Vertical || t.Vertical); });
       d.payApprovals = (d.payApprovals || []).filter(function (r) { return keep(r.vertical); });
       d.retApprovals = (d.retApprovals || []).filter(function (r) { return keep(r.vertical); });
+      d.stageApprovals = (d.stageApprovals || []).filter(function (r) { return keep(r.vertical); });
+      d.held = (d.held || []).filter(function (r) { return keep(r.order.Vertical); });
       d.follow = (d.follow || []).filter(function (r) { return keep(r.Vertical); });
       d.approvals = (d.approvals || []).filter(function (r) { return r.verts ? r.verts.split(',').map(function (x) { return x.trim(); }).indexOf(S.wv) > -1 : (!r.company || r.company === sv.company); });
     }
@@ -255,7 +258,11 @@ function work() {
       h += '<div class="st">Retailer deletions to approve · ' + d.retApprovals.length + '</div>';
       d.retApprovals.forEach(function (r) { h += retDelCard(r); });
     }
-    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length && !(d.retApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
+    if ((d.stageApprovals || []).length) {
+      h += '<div class="st">Stage changes to approve · ' + d.stageApprovals.length + '</div>';
+      d.stageApprovals.forEach(function (r) { h += stageReqCard(r); });
+    }
+    if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length && !(d.retApprovals || []).length && !(d.stageApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
     if ((d.approvals || []).length) {
       h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
       d.approvals.forEach(function (r) { h += reqCard(r, true); });
@@ -276,6 +283,11 @@ function work() {
         '<div class="row muted"><span>' + (o.kind === 'retail' ? 'Retail · ' + esc(o.KitMix || '') : esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.City ? ' · ' + esc(o.City) : '')) + '</span><span>' + due(t.DueAt) + '</span></div>' +
         (S.scope === 'team' ? '<div class="muted">Owner: ' + esc(t.OwnerName) + '</div>' : '') + '</div>';
     });
+    if ((d.held || []).length) {
+      h += '<details style="margin-top:12px"><summary>On hold · ' + d.held.length + '</summary>';
+      d.held.forEach(function (t) { h += '<div class="card item" onclick="openOrder(\'' + t.order.OrderID + '\')"><div class="row"><div class="name">' + esc(t.order.CustomerName) + '</div><span class="badge">till ' + esc(t.until) + '</span></div><div class="muted">' + esc(t.Stage) + ' · ' + esc(t.reason) + ' · by ' + esc(t.by) + '</div></div>'; });
+      h += '</details>';
+    }
     set(h);
   });
 }
@@ -311,7 +323,9 @@ function loadList() {
       h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div>' +
         '<div class="row muted" style="margin-top:6px"><span>' + esc(o.CapacityKW ? o.CapacityKW + ' kW' : '') + (o.OrderValue ? ' · ' + lakh(o.OrderValue) : '') + (o.SalesExec ? ' · ' + esc(o.SalesExec) : '') + '</span><span>' + (o.DaysInStage !== '' ? o.DaysInStage + ' d in stage' : '') + '</span></div>' +
         (o.LeadTemp || o.CallBackDate ? '<div>' + (o.LeadTemp ? '<span class="badge ' + (o.LeadTemp === 'Hot' ? 'red' : o.LeadTemp === 'Warm' ? 'amber' : '') + '">' + esc(o.LeadTemp) + '</span> ' : '') + (o.CallBackDate ? '<span class="muted">call back ' + esc(o.CallBackDate) + '</span>' : '') + '</div>' : '') +
-        (o.Balance > 0 && o.OrderValue ? '<div class="muted">Balance ' + lakh(o.Balance) + (o.DueReason ? ' · <b>' + esc(o.DueReason) + '</b>' : '') + '</div>' : '') + '</div>';
+        (o.Balance > 0 && o.OrderValue ? '<div class="muted">Balance ' + lakh(o.Balance) + (o.DueReason ? ' · <b>' + esc(o.DueReason) + '</b>' : '') + '</div>' : '') +
+        (o.CreditBy && o.Balance > 0 ? '<div><span class="badge ' + (o.CreditDue && o.CreditDue < new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10) ? 'red' : 'amber') + '">On credit · due ' + esc(o.CreditDue) + '</span></div>' : '') +
+        (o.Hold ? '<div><span class="badge">On hold till ' + esc(o.Hold) + '</span></div>' : '') + '</div>';
     });
     if ($('list')) $('list').innerHTML = h;
   });
@@ -392,12 +406,15 @@ function renderOrder(d) {
     var s = S.ST.filter(function (x) { return x.code === t.Stage; })[0] || {fields: [], req: []};
     h += '<div class="card" id="tb_' + t.TaskID + '"><div class="row"><b>Now: ' + esc(t.Title) + '</b>' + (t.Overdue ? '<span class="badge red">Overdue</span>' : '') + '</div>' +
       '<div class="muted">' + esc(t.OwnerName || ('Team: ' + (S.boot.roles[t.OwnerRole] || t.OwnerRole))) + ' · ' + due(t.DueAt) + '</div>';
-    if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? ' Director has approved supply.' : '') + '</div>';
+    if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? (o.CreditBy ? ' Supply on credit approved by ' + esc(o.CreditBy) + ' (payment expected by ' + esc(o.CreditDue) + ').' : ' Director has approved supply.') : '') + '</div>';
+    if (d.gate && d.canCredit && o.DirectorApproval !== 'Approved') h += '<details><summary>Approve supply on credit</summary><label>Payment expected by *</label><input id="cr_due" type="date"><label>Note</label><input id="cr_note" placeholder="e.g. customer pays after installation"><button class="btn green" onclick="approveCredit(this)">Approve supply on credit</button></details>';
+    var held = t.HoldUntil && String(t.HoldUntil).slice(0, 10) > (d.today || '');
+    if (held) h += '<div class="note">On hold till <b>' + esc(String(t.HoldUntil).slice(0, 10)) + '</b> · ' + esc(t.HoldReason) + ' (by ' + esc(t.HoldBy) + '). Not counted as overdue.</div>' + (t.canAct ? '<button class="btn sec" onclick="resumeTask(\'' + t.TaskID + '\',this)">Resume now</button>' : '');
     if (R && t.Stage === 'R6 Dispatch') { var sq = (d.stockReqs || []).filter(function (x) { return x.status === 'Pending'; })[0], rj = (d.stockReqs || []).filter(function (x) { return x.status === 'Rejected'; }).pop(); h += '<div class="note' + (sq ? '' : (rj && !d.moves.length ? ' bad' : '')) + '">' + (d.moves.length ? 'Stock out approved and recorded: ' + d.moves.length + ' line(s). Now enter the dispatch date and complete.' : sq ? 'Stock out sent by ' + esc(sq.by) + ' is waiting for ' + esc(sq.approver) + "'s approval." : rj ? 'Stock out was rejected by ' + esc(rj.decidedBy) + ': ' + esc(rj.reason) + '. Record it again.' : 'First record the stock out from the warehouse. It needs approval before dispatch.') + '</div>'; }
     if (R && t.Stage === 'R6 Dispatch' && !(d.stockReqs || []).some(function (x) { return x.status === 'Pending'; })) h += '<button class="btn sec" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>';
     if (t.canAct) {
       s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
-      if (d.gate && u.director && o.DirectorApproval !== 'Approved') h += '<button class="btn green" onclick="approveGate()">Approve supply (Director)</button>';
+      if (!held) h += '<details><summary>Put on hold</summary><label>Reason</label><select id="hr_' + t.TaskID + '">' + ['Waiting for payment', 'Customer not ready', 'Site issue', 'Material awaited', 'Other'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Resume on</label><input id="hu_' + t.TaskID + '" type="date"><label>Note</label><input id="hn_' + t.TaskID + '"><button class="btn sec" onclick="holdTask(\'' + t.TaskID + '\',this)">Put on hold</button></details>';
       h += '<label>Note (optional)</label><input id="tn_' + t.TaskID + '">';
       if (!R && t.Stage === '01 Lead' && d.dropReasons) S.lead1 = lead1Box(o, t, d);
       h += '<div class="two">' + (s.fields.length ? '<button class="btn sec" onclick="saveTask(\'' + t.TaskID + '\')">Save</button>' : '') + '<button class="btn green" onclick="doneTask(\'' + t.TaskID + '\', this)">Done → next stage</button></div>';
@@ -436,6 +453,9 @@ function renderOrder(d) {
   if (!R) h += incCard(d);
   if (!R && d.access) h += accessCard('CUSTOMER', o.OrderID, d.access, o.Mobile);
 
+  // stage change request (staff) / pending notice
+  if (d.stageReq) h += '<div class="card"><span class="badge amber">Stage change waiting for ' + esc(d.stageReq.approver) + '</span><div class="muted">' + esc(o.Stage) + ' → <b>' + esc(d.stageReq.to) + '</b> · asked by ' + esc(d.stageReq.by) + ' · ' + esc(d.stageReq.reason) + '</div></div>';
+  else if (d.canAskStage && o.Status === 'Active') h += '<details><summary>Ask management to move the stage</summary><div class="card"><div class="muted">Use when the order is at the wrong step, e.g. imported orders where supply or installation is already done.</div><label>Move to</label><select id="as_st">' + S.ST.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select><label>What is already done? *</label><input id="as_r" placeholder="e.g. supply done on 5 Oct, installation done"><button class="btn sec" onclick="askStage(this)">Send for approval</button></div></details>';
   // manager actions
   if (u.mgr && o.Status === 'Active') {
     h += '<div class="st">Head / Director actions</div><div class="card"><label>Move to stage</label><select id="mv">' + S.ST.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select>' +
@@ -455,6 +475,31 @@ function saveTask(tid) {
 function doneTask(tid, el) {
   busy(el);
   call('completeTask', {taskId: tid, values: collect('tb_' + tid), note: $('tn_' + tid) ? $('tn_' + tid).value : ''}, function (r) { toast('Done. Now at ' + r.stage + '.'); openOrder(S.cur); }, function () { if (el) el.disabled = false; });
+}
+function approveCredit(b) {
+  var due = $('cr_due').value; if (!due) { toast('Choose the date payment is expected.'); return; }
+  busy(b); call('approveCredit', {id: S.cur, due: due, note: $('cr_note').value}, function () { toast('Supply on credit approved.'); openOrder(S.cur); }, function () { b.disabled = false; });
+}
+function holdTask(tid, b) {
+  var until = $('hu_' + tid).value; if (!until) { toast('Choose the resume date.'); return; }
+  busy(b); call('holdTask', {taskId: tid, reason: $('hr_' + tid).value, until: until, note: $('hn_' + tid).value}, function () { toast('On hold till ' + until + '.'); openOrder(S.cur); }, function () { b.disabled = false; });
+}
+function resumeTask(tid, b) { busy(b); call('resumeTask', {taskId: tid}, function () { toast('Resumed.'); openOrder(S.cur); }, function () { b.disabled = false; }); }
+function askStage(b) {
+  var st = $('as_st').value, r = $('as_r').value;
+  if (!r.trim()) { toast('Write what is already done.'); return; }
+  busy(b); call('askStage', {id: S.cur, stage: st, reason: r}, function (x) { toast('Sent to ' + x.approver + ' for approval.'); openOrder(S.cur); }, function () { b.disabled = false; });
+}
+function stageReqCard(r) {
+  var h = '<div class="card"><div class="row"><b>' + esc(r.customer || r.order) + '</b><span class="badge amber">' + esc(r.vertical) + '</span></div><div style="margin-top:4px">' + esc(r.from) + ' → <b>' + esc(r.to) + '</b></div>' +
+    '<div>' + esc(r.reason) + '</div><div class="muted">Asked by ' + esc(r.by) + ' · ' + esc(r.at) + ' · <span class="lnk" onclick="openOrder(\'' + esc(r.order) + '\')">open order</span></div>';
+  if (r.canDecide) h += '<input id="sr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decideStage(\'' + r.id + '\',true,this)">Approve move</button><button class="btn sec" onclick="decideStage(\'' + r.id + '\',false,this)">Reject</button></div>';
+  return h + '</div>';
+}
+function decideStage(id, ok, b) {
+  var reason = ($('sr_' + id) || {}).value || '';
+  if (!ok && !reason.trim()) { toast('Write the reason for rejecting.'); return; }
+  busy(b); call('decideStage', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Order moved.' : 'Request rejected.'); work(); }, function () { b.disabled = false; });
 }
 function approveGate() { call('saveOrder', {id: S.cur, values: {DirectorApproval: 'Approved'}}, function () { toast('Supply approved.'); openOrder(S.cur); }); }
 function reassign(tid) { call('reassign', {taskId: tid, ownerName: $('ra_' + tid).value}, function () { toast('Reassigned.'); openOrder(S.cur); }); }
@@ -546,7 +591,7 @@ function dashboard() {
   callFast('dashboard', {}, function (d) {
     var t = d.total, h = (hasLine(true) ? '<div class="chips"><span class="chip on">EPC</span><span class="chip" onclick="S.rtab=\'rdash\';go(\'retail\')">Retail</span>' + (S.boot.warehouses.length ? '<span class="chip" onclick="go(\'stock\')">Stock</span>' : '') + '</div>' : '') + '<div class="h">Dashboard · ' + esc(d.month) + '</div>';
     h += '<div class="tiles">' + [['Active orders', t.active], ['Booked this month', t.booked + ' · ' + t.bookedKW.toFixed(1) + ' kW'], ['Booking value', lakh(t.bookedValue)], ['Installed this month', t.installs + ' · ' + t.installsKW.toFixed(1) + ' kW'],
-      ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+      ['Collected this month', lakh(t.collected)], ['Balance to collect', lakh(t.balance)], ['New leads', t.leads], ['Open / overdue tasks', t.open + ' / ' + t.overdue]].concat(d.credit && d.credit.n ? [['On credit (' + d.credit.n + (d.credit.over ? ', ' + d.credit.over + ' overdue' : '') + ')', lakh(d.credit.amt)]] : []).map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
     if (d.dsr && d.dsr.people.length) {
       var dd = d.dsr.days;
       h += '<div class="st">Daily sales updates (last 7 days)</div><div class="tbl"><table><tr><th>Name</th>' + dd.map(function (x) { return '<th>' + x.slice(8) + '</th>'; }).join('') + '<th>Full days</th></tr>' +
@@ -1231,7 +1276,7 @@ function home() {
   if (S.boot.user.referrerOnly) return;
   callFast('myWork', {scope: 'mine'}, function (d) {
     var b = function (id, n, cls) { if ($('tb_' + id) && n) $('tb_' + id).innerHTML = '<span class="badge ' + (cls || 'amber') + '">' + n + '</span>'; };
-    b('work', d.tasks.length + (d.approvals || []).length + (d.payApprovals || []).length + (d.retApprovals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
+    b('work', d.tasks.length + (d.approvals || []).length + (d.payApprovals || []).length + (d.retApprovals || []).length + (d.stageApprovals || []).length + (d.follow || []).length, d.tasks.some(function (t) { return t.Overdue; }) ? 'red' : 'amber');
     b('svc', d.service); if (d.dsr) b('dsr', d.dsr.pending ? d.dsr.pending + ' to fill' : '');
   }, function () {});
 }
@@ -1241,7 +1286,7 @@ window.addEventListener('popstate', function (e) {
   go(st && st.t ? st.t : 'home', true);
 });
 // ---- customers list: filters and sorting
-var CUST_FILTERS = [['', 'All active'], ['mine', 'My orders'], ['due', 'Payment due'], ['overdue', 'Overdue'], ['callback', 'Call-backs due'], ['Hot', 'Hot'], ['Warm', 'Warm'], ['Cold', 'Cold']];
+var CUST_FILTERS = [['', 'All active'], ['mine', 'My orders'], ['due', 'Payment due'], ['overdue', 'Overdue'], ['callback', 'Call-backs due'], ['Hot', 'Hot'], ['Warm', 'Warm'], ['Cold', 'Cold'], ['credit', 'On credit'], ['creditOver', 'Credit overdue'], ['hold', 'On hold']];
 var CUST_SORTS = [['stage', 'Stage'], ['days', 'Days stuck (most first)'], ['balance', 'Balance due (highest)'], ['value', 'Order value (highest)'], ['newest', 'Newest first'], ['callback', 'Call-back date']];
 function lead1Box(o, t, d) {
   return '<details class="sub"><summary>Call back later (park Warm / Cold lead)</summary><div id="pk_box"><label>Lead quality</label><select id="pk_t"><option>Warm</option><option>Cold</option><option>Hot</option></select>' +

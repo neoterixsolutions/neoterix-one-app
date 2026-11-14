@@ -1,1 +1,1 @@
-v17 2026-11-14 Retail orders vertical filter, payment double-entry guard
+v18 2026-11-14 Supply on credit, task hold, stage-change requests
