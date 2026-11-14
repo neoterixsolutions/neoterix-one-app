@@ -367,6 +367,7 @@ function progress(stage) {
   return '<div class="prog">' + ST.map(function (s, i) { return '<span class="' + (i < idx ? 'd' : (i === idx ? 'c' : '')) + '" title="' + esc(s.code) + '"></span>'; }).join('') + '</div>';
 }
 function openOrder(id) {
+  if (id !== S.cur) S.payKey = null;
   S.seq = (S.seq || 0) + 1;
   try { history.pushState({t: S.tab, sub: 1}, ''); } catch (e) {}
   S.cur = id; loading();
@@ -418,7 +419,7 @@ function renderOrder(d) {
   h += '<details id="paybox"><summary>+ Add payment received</summary><label>Type</label><select id="py_type">' + (R ? ['Advance', 'Other'] : S.boot.payTypes).map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select>' +
     '<label>Amount (Rs)</label><input id="py_amt" type="number" inputmode="decimal"><label>Date</label><input id="py_date" type="date" value="' + new Date().toISOString().slice(0, 10) + '">' +
     '<label>Mode</label><select id="py_mode">' + S.boot.payModes.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Reference / UTR (optional)</label><input id="py_ref">' +
-    '<button class="btn" onclick="addPay()">Save payment</button></details></div>';
+    '<button class="btn" onclick="addPay(this)">Save payment</button></details></div>';
 
   // retail: dispatch lines and warranty
   if (R && d.moves.length) h += '<div class="st">Dispatched material</div><div class="card">' + d.moves.map(function (m) { return '<div class="ln"><span class="nm">' + esc(m.Item) + '<div class="muted">' + esc(m.Date) + ' · ' + esc(m.Warehouse) + (m.Serials ? ' · ' + esc(m.Serials) : '') + '</div></span><b>' + Math.abs(m.Qty) + '</b></div>'; }).join('') + '</div>';
@@ -457,8 +458,27 @@ function doneTask(tid, el) {
 }
 function approveGate() { call('saveOrder', {id: S.cur, values: {DirectorApproval: 'Approved'}}, function () { toast('Supply approved.'); openOrder(S.cur); }); }
 function reassign(tid) { call('reassign', {taskId: tid, ownerName: $('ra_' + tid).value}, function () { toast('Reassigned.'); openOrder(S.cur); }); }
-function addPay() {
-  call('addPayment', {id: S.cur, type: $('py_type').value, amount: $('py_amt').value, date: $('py_date').value, mode: $('py_mode').value, ref: $('py_ref').value}, function (r) { toast(r && r.pending ? 'Sent to ' + r.approver + ' for approval. It counts once approved.' : 'Payment saved.'); openOrder(S.cur); });
+function addPay(b, force) {
+  if (S.paying) return;
+  var amt = Number($('py_amt').value), p = {id: S.cur, type: $('py_type').value, amount: $('py_amt').value, date: $('py_date').value, mode: $('py_mode').value, ref: $('py_ref').value};
+  if (!(amt > 0)) { toast('Enter the amount received.'); return; }
+  if (!force && !confirmBox('Save this payment?\n\n' + inr(amt) + ' · ' + p.type + (p.mode ? ' · ' + p.mode : '') + (p.ref ? '\nRef: ' + p.ref : '') + '\n\nTap OK only once and wait for "Payment saved".')) return;
+  S.payKey = S.payKey || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  p.key = S.payKey; p.force = !!force;
+  S.paying = true;
+  if (b) { b.disabled = true; b.textContent = 'Saving… please wait'; }
+  var done = function () { S.paying = false; if (b) { b.disabled = false; b.textContent = 'Save payment'; } };
+  call('addPayment', p, function (r) {
+    done();
+    if (r && r.dup) {
+      var lst = r.prior.map(function (x) { return '• ' + inr(r.amount) + ' by ' + x.by + ' at ' + x.at + ' (' + x.status + ')'; }).join('\n');
+      if (confirmBox('The same amount was already entered on this order in the last 2 hours:\n' + lst + '\n\nIs this a SEPARATE, second payment? Tap Cancel if it is the same one.')) { S.payKey = null; addPay(b, true); }
+      else toast('Not saved again. The earlier entry stays.');
+      return;
+    }
+    S.payKey = null;
+    toast(r && r.pending ? 'Sent to ' + r.approver + ' for approval. It counts once approved.' : 'Payment saved.'); openOrder(S.cur);
+  }, done);
 }
 function payEditBox(pid) {
   var p = (S.pays || []).filter(function (x) { return x.PaymentID === pid; })[0], el = $('pay_' + pid);
@@ -729,8 +749,14 @@ function newOrderFor(rid, vid) { S.lastV = vid; S.tab = 'lead'; set('<div class=
 function retailOrders() {
   S.rstage = S.rstage || '';
   var chips = '<span class="chip ' + (S.rstage === '' ? 'on' : '') + '" onclick="S.rstage=\'\';retailOrders()">All active</span>' + S.boot.rstages.map(function (s) { return '<span class="chip ' + (S.rstage === s.code ? 'on' : '') + '" onclick="S.rstage=\'' + s.code + '\';retailOrders()">' + esc(s.code) + '</span>'; }).join('');
-  call('rorders', {stage: S.rstage}, function (d) {
-    var h = '<div class="chips">' + chips + '</div><div class="muted" style="margin-bottom:8px">' + d.total + ' order(s)</div>';
+  var rv = (S.boot.verticals || []).filter(function (v) { return v.line === 'Retail'; });
+  if (S.rov === undefined) { try { S.rov = localStorage.getItem('rov_' + S.boot.user.name) || ''; } catch (e) { S.rov = ''; } }
+  if (S.rov && !rv.some(function (v) { return v.id === S.rov; })) S.rov = '';
+  call('rorders', {stage: S.rstage, vertical: S.rov}, function (d) {
+    var h = '';
+    if (rv.length > 1) { var all = 0; for (var k in (d.vcount || {})) all += d.vcount[k];
+      h += '<select style="width:100%;margin:6px 0 14px;font-weight:600" onchange="S.rov=this.value;try{localStorage.setItem(\'rov_\'+S.boot.user.name,this.value)}catch(e){};retailOrders()"><option value="">All retail verticals (' + all + ')</option>' + rv.map(function (v) { return '<option value="' + v.id + '"' + (S.rov === v.id ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + ' (' + ((d.vcount || {})[v.id] || 0) + ')</option>'; }).join('') + '</select>'; }
+    h += '<div class="chips">' + chips + '</div><div class="muted" style="margin-bottom:8px">' + d.total + ' order(s)</div>';
     d.orders.forEach(function (o) { h += '<div class="card item" onclick="openOrder(\'' + o.OrderID + '\')"><div class="row"><div class="name">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage, o.Overdue) + '</div><div class="row muted" style="margin-top:4px"><span>' + esc(o.KitMix || '') + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</span><span>' + (o.DaysInStage !== '' ? o.DaysInStage + ' d in stage' : '') + '</span></div>' + (o.Balance > 0 && o.OrderValue ? '<div class="muted">Advance pending ' + inr(o.Balance) + '</div>' : '') + '</div>'; });
     if (!d.orders.length) h += '<div class="card muted">No retail orders here. Create one from + New.</div>';
     if ($('rbody')) $('rbody').innerHTML = h;
