@@ -610,10 +610,37 @@ function dashboard() {
     h += '<div class="st">Pipeline by stage</div><div class="tbl"><table><tr><th>Stage</th><th>Orders</th><th>Value</th><th>Avg days</th><th>Oldest</th><th>Overdue</th></tr>';
     d.stages.forEach(function (s) { h += '<tr class="item" onclick="S.stage=\'' + s.code + '\';go(\'cust\')"><td>' + esc(s.code) + '</td><td>' + s.count + '</td><td>' + lakh(s.value) + '</td><td>' + s.avgDays + '</td><td>' + s.maxDays + '</td><td>' + (s.overdue ? '<b style="color:#C62828">' + s.overdue + '</b>' : 0) + '</td></tr>'; });
     h += '</table></div>';
+    if (d.refs) h += '<div id="refbox"><div class="st">Referral leads</div><div class="muted">Loading…</div></div>';
     h += '<div class="st">Pending work by person</div><div class="tbl"><table><tr><th>Person / team</th><th>Open</th><th>Overdue</th></tr>';
     d.people.forEach(function (p) { h += '<tr><td>' + esc(p.name) + '</td><td>' + p.open + '</td><td>' + (p.overdue ? '<b style="color:#C62828">' + p.overdue + '</b>' : 0) + '</td></tr>'; });
     h += '</table></div>';
     set(h);
+    if (d.refs) refLoad();
+  });
+}
+function refLoad() {
+  S.refP = S.refP || {vertical: '', period: 'month'};
+  callFast('referrals', S.refP, function (r) {
+    var box = document.getElementById('refbox'); if (!box) return;
+    var t = r.total, h = '<div class="row" style="margin-top:14px"><div class="h" style="margin:0">Referral leads</div></div>' +
+      '<div class="g2" style="margin:6px 0"><select onchange="S.refP.vertical=this.value;refLoad()"><option value="">All verticals</option>' + r.verticals.map(function (v) { return '<option value="' + esc(v.id) + '"' + (v.id === r.vertical ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>' +
+      '<select onchange="S.refP.period=this.value;refLoad()"><option value="month"' + (r.period === 'month' ? ' selected' : '') + '>This month</option><option value="all"' + (r.period === 'all' ? ' selected' : '') + '>All time</option></select></div>' +
+      '<div class="tiles">' + [['Employee referrals', t.emp + ' · ' + t.empBooked + ' booked'], ['Customer referrals', t.cust + ' · ' + t.custBooked + ' booked'], ['Incentive earned (payable)', inr(t.earned)], ['Pending (not yet payable)', inr(t.pending)]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+    var grp = function (title, list) {
+      var o = '<div class="st">' + title + '</div>';
+      if (!list.length) return o + '<div class="muted">No referral leads ' + (r.period === 'month' ? 'this month' : 'yet') + '.</div>';
+      return o + list.map(function (g) {
+        return '<div class="card"><div class="row"><b>' + esc(g.name) + (g.type && g.type !== 'Employee' ? ' <span class="badge">' + esc(g.type) + '</span>' : '') + '</b><span>' + (g.earned ? '<b style="color:var(--g)">' + inr(g.earned) + '</b>' : '') + (g.pending ? ' <span class="muted">' + (g.earned ? '+ ' : '') + inr(g.pending) + ' pending</span>' : '') + (!g.earned && !g.pending ? '<span class="muted">Rs 0</span>' : '') + '</span></div>' +
+          '<div class="muted">' + g.leads + ' lead' + (g.leads === 1 ? '' : 's') + ' · ' + g.booked + ' booked' + (g.lost ? ' · ' + g.lost + ' lost' : '') + '</div>' +
+          '<div style="margin-top:4px">' + g.stageList.map(function (x) { return '<span class="badge ' + (x.s === 'Lost' ? 'red' : x.s === 'Completed' || x.s === 'Handover' || x.s === 'Verification' ? 'green' : '') + '" style="margin:2px 4px 0 0">' + esc(x.s) + ' ' + x.n + '</span>'; }).join('') + '</div>' +
+          '<details style="margin-top:6px"><summary>See the ' + g.list.length + ' lead' + (g.list.length === 1 ? '' : 's') + '</summary>' + g.list.map(function (x) {
+            return '<div class="act item" onclick="openOrder(\'' + esc(x.id) + '\')"><div class="row"><span>' + esc(x.customer) + (x.kw ? ' · ' + esc(x.kw) + ' kW' : '') + '</span><b>' + esc(x.stage) + '</b></div><div class="row muted"><span>' + esc(fmtD(x.date)) + ' · ' + esc(x.vertical) + '</span><span>' + (x.amt ? inr(x.amt) + ' · ' : '') + esc(x.status || '') + '</span></div></div>';
+          }).join('') + '</details></div>';
+      }).join('');
+    };
+    h += grp('By employee', r.employees) + grp('By customer or influencer who referred', r.customers);
+    h += '<div class="muted">Incentive amounts are worked out only for ' + esc(r.incVerts.join(', ')) + ' (the incentive scheme verticals). Lost leads are counted but earn nothing.</div>';
+    box.innerHTML = h;
   });
 }
 
