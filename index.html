@@ -1057,6 +1057,7 @@ function incCard(d) {
   var x = d.incentive, o = d.order, u = S.boot.user;
   if (!x) return '';
   var h = '<div class="st">Incentive (visible to CEO / Director / Accounts head)</div><div class="card">';
+  if (x.imported) return h + '<div class="muted">Imported order (from before this app): incentive is not calculated here.</div></div>';
   if (x.hidden) return h + '<div class="muted">' + (x.approval === 'Denied' ? 'Incentive on this order was not approved by the CEO.' : 'Incentive on this order is waiting for CEO approval.') + '</div></div>';
   if (!x.booked) h += '<div class="muted">Incentive is worked out once the order is booked (OCS signed).</div>';
   else {
