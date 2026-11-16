@@ -210,10 +210,11 @@ function renderNav() {
 function go(tab, fromHistory) {
   S.seq = (S.seq || 0) + 1;
   if (!fromHistory) { try { history.pushState({t: tab}, ''); } catch (e) {} }
-  if (['dsr', 'svc', 'dsrteam', 'logins', 'home'].indexOf(tab) > -1) {
+  if (['dsr', 'svc', 'dsrteam', 'logins', 'home', 'upd'].indexOf(tab) > -1) {
     if ($('hb_home')) $('hb_home').style.display = tab === 'home' ? 'none' : '';
     if (tab === 'home') { S.tab = 'home'; return home(); }
     S.tab = tab;
+    if (tab === 'upd') return updScreen();
     return tab === 'dsr' ? dsrScreen() : tab === 'svc' ? svcScreen(false) : tab === 'dsrteam' ? dsrTeamScreen() : portalAdmin();
   }
   if ($('hb_home') && !(S.boot && S.boot.portal)) $('hb_home').style.display = '';
@@ -660,6 +661,81 @@ function refLoad() {
     h += '<div class="muted">Incentive amounts are worked out only for ' + esc(r.incVerts.join(', ')) + ' (the incentive scheme verticals). Lost leads are counted but earn nothing.</div>';
     box.innerHTML = h;
   });
+}
+
+// ---------------------------------------------------------------- Daily work updates (v22)
+function dShift(d, n) { var x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); }
+function updScreen() {
+  S.upd = S.upd || {range: 'today', vertical: ''};
+  var td = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10), q = {vertical: S.upd.vertical};
+  if (S.upd.range === 'today') q.from = q.to = td;
+  else if (S.upd.range === 'yday') q.from = q.to = dShift(td, -1);
+  else if (S.upd.range === 'week') { q.from = dShift(td, -6); q.to = td; }
+  else { q.from = q.to = S.upd.date || td; }
+  loading();
+  call('dayReport', q, function (d) {
+    S.updD = d;
+    var t = d.total, lbl = d.from === d.to ? fmtD(d.from) : fmtD(d.from) + ' – ' + fmtD(d.to);
+    var h = '<div class="h">Daily work updates</div><div class="g2"><select onchange="S.upd.range=this.value;if(this.value!==\'date\')updScreen();else $(\'upd_dt\').style.display=\'\'">' +
+      [['today', 'Today'], ['yday', 'Yesterday'], ['week', 'Last 7 days'], ['date', 'Pick a date']].map(function (x) { return '<option value="' + x[0] + '"' + (S.upd.range === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
+      (d.mgr ? '<select onchange="S.upd.vertical=this.value;updScreen()"><option value="">All verticals</option>' + d.verticals.map(function (v) { return '<option value="' + esc(v.id) + '"' + (v.id === d.vertical ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select>' : '<span></span>') + '</div>' +
+      '<input type="date" id="upd_dt" style="margin-top:6px;' + (S.upd.range === 'date' ? '' : 'display:none') + '" value="' + esc(S.upd.date || td) + '" onchange="S.upd.date=this.value;S.upd.range=\'date\';updScreen()">' +
+      '<div class="muted" style="margin:6px 0">' + esc(lbl) + (d.vertical ? ' · ' + esc(d.vertical) : (d.mgr ? ' · all your verticals' : '')) + '</div>';
+    if (d.mgr) {
+      h += '<div class="tiles">' + [['New leads', t.leads], ['Orders booked (OCS)', t.booked + (t.kw ? ' · ' + Math.round(t.kw * 10) / 10 + ' kW' : '')], ['Payments collected', inr(t.collected)], ['Stage moves', t.moves]].map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>'; }).join('') + '</div>';
+      if (t.pendingN) h += '<div class="muted">+ ' + inr(t.pending) + ' in ' + t.pendingN + ' payment entr' + (t.pendingN === 1 ? 'y' : 'ies') + ' waiting for approval</div>';
+      if (t.ret) h += '<div class="muted">' + t.ret + ' retail order' + (t.ret === 1 ? '' : 's') + ' entered</div>';
+      h += '<button class="btn green" style="margin-top:8px" onclick="updShare(null)">Share summary on WhatsApp</button>';
+      var bv = d.byVertical.filter(function (v) { return v.leads || v.booked || v.collected || v.moves || v.ret || v.pending; });
+      if (d.byVertical.length > 1) h += '<div class="st">By vertical</div><div class="card">' + (bv.length ? bv.map(function (v) {
+        return '<div class="act"><b>' + esc(v.id + ' ' + v.name) + '</b><div class="muted">' + pl(v.leads, 'lead') + ' · ' + v.booked + ' booked · ' + pl(v.moves, 'stage move') + ' · ' + inr(v.collected) + ' collected' + (v.pending ? ' + ' + inr(v.pending) + ' waiting' : '') + '</div></div>';
+      }).join('') : '<div class="muted">No activity.</div>') + (d.byVertical.length > bv.length ? '<div class="muted" style="margin-top:6px">No activity in ' + (d.byVertical.length - bv.length) + ' other vertical' + (d.byVertical.length - bv.length === 1 ? '' : 's') + '.</div>' : '') + '</div>';
+      h += '<div class="st">By employee</div>';
+    }
+    var act = d.people.filter(function (p) { return p.active; }), idle = d.people.filter(function (p) { return !p.active; });
+    if (!d.people.length) h += '<div class="muted">No activity.</div>';
+    act.concat(idle).forEach(function (p, i) {
+      var chips = [[p.leads, 'lead', 's entered'], [p.ret, 'retail order', 's'], [p.tasks, 'task', 's done'], [p.moves, 'stage move', 's'], [p.booked, 'order', 's booked']].filter(function (x) { return x[0]; })
+        .map(function (x) { return '<span class="badge" style="margin:2px 4px 0 0">' + x[0] + ' ' + x[1] + (x[0] === 1 ? (x[2].replace(/^s/, '')) : x[2]) + '</span>'; });
+      if (p.pays) chips.push('<span class="badge green" style="margin:2px 4px 0 0">' + p.pays + ' payment' + (p.pays === 1 ? '' : 's') + ' ' + inr(p.payAmt) + '</span>');
+      if (p.payPend) chips.push('<span class="badge amber" style="margin:2px 4px 0 0">' + inr(p.payPendAmt) + ' waiting approval</span>');
+      if (p.overdue) chips.push('<span class="badge red" style="margin:2px 4px 0 0">' + p.overdue + ' task' + (p.overdue === 1 ? '' : 's') + ' overdue</span>');
+      h += '<div class="card"><div class="row"><b>' + esc(p.name) + '</b><span class="muted"' + (p.active ? '' : ' style="color:#C62828"') + '>' + (p.last ? 'last active ' + esc(p.last.slice(d.from === d.to ? 11 : 5)) : (p.active ? '' : 'no activity')) + '</span></div>' +
+        '<div>' + chips.join('') + '</div>' +
+        (p.items.length ? '<details' + (!d.mgr ? ' open' : '') + '><summary>See what ' + esc(p.name.split(' ')[0]) + ' did (' + p.items.length + ')</summary>' + p.items.map(function (x) { return '<div class="act"><span class="muted">' + esc(x.t.slice(d.from === d.to ? 11 : 5)) + '</span> · ' + esc(x.x) + '</div>'; }).join('') + '</details>' : '') +
+        (p.active && (!d.mgr || p.name === S.boot.user.name) ? '<button class="btn green" style="margin-top:8px" onclick="updShare(' + i + ')">Share my update on WhatsApp</button>' : '') + '</div>';
+    });
+    S.updList = act.concat(idle);
+    set(h);
+  });
+}
+function pl(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+function updText(i) {
+  var d = S.updD, t = d.total, lbl = d.from === d.to ? fmtD(d.from) : fmtD(d.from) + ' – ' + fmtD(d.to), L = [];
+  if (i === null) {
+    L.push('*Daily work update – ' + lbl + '*' + (d.vertical ? ' (' + d.vertical + ')' : ''));
+    L.push('New leads: ' + t.leads + ' | Booked: ' + t.booked + (t.kw ? ' (' + Math.round(t.kw * 10) / 10 + ' kW)' : '') + ' | Collected: ' + inr(t.collected) + ' | Stage moves: ' + t.moves);
+    if (t.pendingN) L.push('Payments waiting approval: ' + inr(t.pending));
+    if (d.byVertical.length > 1) { L.push(''); d.byVertical.forEach(function (v) { if (v.leads || v.booked || v.collected || v.moves) L.push(v.id + ' ' + v.name + ': ' + pl(v.leads, 'lead') + ', ' + v.booked + ' booked, ' + inr(v.collected)); }); }
+    L.push('');
+    S.updList.forEach(function (p) { L.push((p.active ? '✅ ' : '⚠️ ') + p.name + ': ' + (p.active ? [p.leads ? pl(p.leads, 'lead') : '', p.tasks ? pl(p.tasks, 'task') : '', p.moves ? pl(p.moves, 'stage move') : '', p.pays ? inr(p.payAmt) + ' collected' : '', p.booked ? p.booked + ' booked' : ''].filter(String).join(', ') || 'active' : 'no activity') + (p.overdue ? ' (' + p.overdue + ' overdue)' : '')); });
+  } else {
+    var p = S.updList[i];
+    L.push('*' + p.name + ' – work update ' + lbl + '*');
+    [[p.leads, 'New leads'], [p.ret, 'Retail orders'], [p.tasks, 'Tasks completed'], [p.moves, 'Customers moved to next stage'], [p.booked, 'Orders booked']].forEach(function (x) { if (x[0]) L.push(x[1] + ': ' + x[0]); });
+    if (p.pays) L.push('Payments collected: ' + inr(p.payAmt) + ' (' + p.pays + ')');
+    if (p.payPend) L.push('Payments waiting approval: ' + inr(p.payPendAmt));
+    L.push('');
+    p.items.forEach(function (x) { L.push('• ' + x.x); });
+    if (p.overdue) { L.push(''); L.push('Pending/overdue tasks: ' + p.overdue); }
+  }
+  return L.join('\n');
+}
+function updShare(i) {
+  var txt = updText(i);
+  try { if (navigator.clipboard) navigator.clipboard.writeText(txt); } catch (e) {}
+  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+  toast('Copied. WhatsApp is opening – pick your daily updates group.');
 }
 
 // ---------------------------------------------------------------- admin
@@ -1381,6 +1457,7 @@ function homeTiles() {
   if (hasLine(true)) t.push(['retail', '◆', 'Retail', 'Retailers and kit orders']);
   if (S.boot.warehouses.length) t.push(['stock', '▤', 'Stock', 'Warehouse stock and entries']);
   t.push(['lead', '+', 'New lead / order', 'Add a customer or retail order']);
+  t.push(['upd', '✉', 'Daily work updates', u.mgr ? 'Who did what today, by vertical' : 'Your day – share on WhatsApp']);
   if (u.dsr) t.push(['dsr', '✎', 'Daily sales summary', 'Fill today\'s summary']);
   if (u.service) t.push(['svc', '🔧', 'Service requests', 'Customer complaints']);
   if (u.canRefer) t.push(['earn', '★', u.incViewer ? 'Refer & incentives' : 'Refer & Earn', u.incViewer ? 'Referrals, team incentives, Champions' : 'Your referrals and earnings']);
