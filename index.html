@@ -437,7 +437,13 @@ function renderOrder(d) {
     var held = t.HoldUntil && String(t.HoldUntil).slice(0, 10) > (d.today || '');
     if (held) h += '<div class="note">On hold till <b>' + esc(String(t.HoldUntil).slice(0, 10)) + '</b> · ' + esc(t.HoldReason) + ' (by ' + esc(t.HoldBy) + '). Not counted as overdue.</div>' + (t.canAct ? '<button class="btn sec" onclick="resumeTask(\'' + t.TaskID + '\',this)">Resume now</button>' : '');
     if (R && t.Stage === 'R6 Dispatch') { var sq = (d.stockReqs || []).filter(function (x) { return x.status === 'Pending'; })[0], rj = (d.stockReqs || []).filter(function (x) { return x.status === 'Rejected'; }).pop(); h += '<div class="note' + (sq ? '' : (rj && !d.moves.length ? ' bad' : '')) + '">' + (d.moves.length ? 'Stock out approved and recorded: ' + d.moves.length + ' line(s). Now enter the dispatch date and complete.' : sq ? 'Stock out sent by ' + esc(sq.by) + ' is waiting for ' + esc(sq.approver) + "'s approval." : rj ? 'Stock out was rejected by ' + esc(rj.decidedBy) + ': ' + esc(rj.reason) + '. Record it again.' : 'First record the stock out from the warehouse. It needs approval before dispatch.') + '</div>'; }
-    if (R && t.Stage === 'R6 Dispatch' && !(d.stockReqs || []).some(function (x) { return x.status === 'Pending'; })) h += '<button class="btn sec" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>';
+    var waitStk = (d.stockReqs || []).some(function (x) { return x.status === 'Pending'; });
+    if ((R && t.Stage === 'R6 Dispatch') || (!R && t.Stage === '08 Supply')) {
+      if (waitStk) h += '<div class="note">Stock out entered – waiting for approval. This step completes by itself once it is approved.</div>';
+      h += '<button class="btn" onclick="dispatchFor(\'' + o.OrderID + '\')">Record stock out for this order</button>' +
+        '<div class="muted" style="margin:4px 0 8px">' + (R ? 'Once approved, dispatch date, serial nos. and invoice fill in and the order moves to Delivered automatically.' :
+        'Once approved, the sent dates fill in by item type (panels/inverter = kit, structure, BOS/cable/meter = BOS). When all three are sent, installation goes to ' + esc(o.BackOffice || 'the back office') + ' automatically. Send in parts if needed.') + '</div>';
+    }
     if (t.canAct) {
       s.fields.forEach(function (k) { if (k !== 'DirectorApproval' || u.director) h += input(k, o[k], o.Vertical); });
       if (!held) h += '<details><summary>Put on hold</summary><label>Reason</label><select id="hr_' + t.TaskID + '">' + ['Waiting for payment', 'Customer not ready', 'Site issue', 'Material awaited', 'Other'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select><label>Resume on</label><input id="hu_' + t.TaskID + '" type="date"><label>Note</label><input id="hn_' + t.TaskID + '"><button class="btn sec" onclick="holdTask(\'' + t.TaskID + '\',this)">Put on hold</button></details>';
