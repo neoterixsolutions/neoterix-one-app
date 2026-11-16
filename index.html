@@ -210,11 +210,12 @@ function renderNav() {
 function go(tab, fromHistory) {
   S.seq = (S.seq || 0) + 1;
   if (!fromHistory) { try { history.pushState({t: tab}, ''); } catch (e) {} }
-  if (['dsr', 'svc', 'dsrteam', 'logins', 'home', 'upd'].indexOf(tab) > -1) {
+  if (['dsr', 'svc', 'dsrteam', 'logins', 'home', 'upd', 'coll'].indexOf(tab) > -1) {
     if ($('hb_home')) $('hb_home').style.display = tab === 'home' ? 'none' : '';
     if (tab === 'home') { S.tab = 'home'; return home(); }
     S.tab = tab;
     if (tab === 'upd') return updScreen();
+    if (tab === 'coll') return collScreen();
     return tab === 'dsr' ? dsrScreen() : tab === 'svc' ? svcScreen(false) : tab === 'dsrteam' ? dsrTeamScreen() : portalAdmin();
   }
   if ($('hb_home') && !(S.boot && S.boot.portal)) $('hb_home').style.display = '';
@@ -706,6 +707,39 @@ function saveDCR(b) {
   for (var i = 0; i < S.dcr.length; i++) { var c = S.dcr[i]; if (!String(c.no || '').trim()) { toast('Enter the certificate no. (or remove the empty row).'); return; } if (!(Number(c.panels) > 0)) { toast('Enter the number of panels for ' + c.no + '.'); return; } if (!String(c.invoice || '').trim()) { toast('Enter the invoice no. for ' + c.no + '.'); return; } }
   busy(b);
   call('saveDCR', {id: S.ctx.order.OrderID, certs: S.dcr}, function (r) { toast('DCR certificates saved.'); openOrder(S.ctx.order.OrderID); }, function () { b.disabled = false; });
+}
+
+// ---------------------------------------------------------------- Collections (v28)
+function collScreen() {
+  S.col = S.col || {range: 'month', vertical: ''};
+  var td = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10), q = {vertical: S.col.vertical};
+  if (S.col.range === 'today') q.from = q.to = td;
+  else if (S.col.range === 'yday') q.from = q.to = dShift(td, -1);
+  else if (S.col.range === 'week') { q.from = dShift(td, -6); q.to = td; }
+  else if (S.col.range === 'month') { q.from = td.slice(0, 8) + '01'; q.to = td; }
+  else if (S.col.range === 'lmonth') { var f = dShift(td.slice(0, 8) + '01', -1); q.from = f.slice(0, 8) + '01'; q.to = f; }
+  else { q.from = S.col.from || td; q.to = S.col.to || td; }
+  loading();
+  call('collections', q, function (d) {
+    var t = d.total, lbl = d.from === d.to ? fmtD(d.from) : fmtD(d.from) + ' – ' + fmtD(d.to);
+    var h = '<div class="h">Collections</div><div class="g2"><select onchange="S.col.range=this.value;if(this.value!==\'pick\')collScreen();else $(\'col_pk\').style.display=\'\'">' +
+      [['month', 'This month'], ['today', 'Today'], ['yday', 'Yesterday'], ['week', 'Last 7 days'], ['lmonth', 'Last month'], ['pick', 'Pick dates']].map(function (x) { return '<option value="' + x[0] + '"' + (S.col.range === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
+      '<select onchange="S.col.vertical=this.value;collScreen()"><option value="">All verticals</option>' + d.verticals.map(function (v) { return '<option value="' + esc(v.id) + '"' + (v.id === d.vertical ? ' selected' : '') + '>' + esc(v.id + ' ' + v.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="g2" id="col_pk" style="margin-top:6px;' + (S.col.range === 'pick' ? '' : 'display:none') + '"><input type="date" id="col_f" value="' + esc(S.col.from || d.from) + '"><input type="date" id="col_t" value="' + esc(S.col.to || d.to) + '" onchange="S.col.from=$(\'col_f\').value;S.col.to=this.value;S.col.range=\'pick\';collScreen()"></div>' +
+      '<div class="muted" style="margin:6px 0">' + esc(lbl) + (d.vertical ? ' · ' + esc(d.vertical) : ' · all your verticals') + '</div>' +
+      '<div class="tiles">' + [['Collected (approved)', inr(t.collected), 'EPC ' + inr(t.epc) + ' · Retail ' + inr(t.retail)], ['Waiting for approval', inr(t.pending), t.pendingN + ' entr' + (t.pendingN === 1 ? 'y' : 'ies')], ['Collected today', inr(t.today), ''], ['Outstanding (booked orders)', inr(d.outstanding), '']]
+        .map(function (x) { return '<div class="tile"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div>' + (x[2] ? '<div class="muted" style="font-size:11px">' + x[2] + '</div>' : '') + '</div>'; }).join('') + '</div>';
+    if (d.byVertical.length > 1) h += '<div class="st">By vertical</div><div class="card">' + d.byVertical.map(function (v) { return '<div class="row act"><span>' + esc(v.id + ' ' + v.name) + ' <span class="muted">(' + v.n + ')</span></span><b>' + inr(v.amt) + '</b></div>'; }).join('') + '</div>';
+    if (d.byMode.length) h += '<div class="st">By mode</div><div class="card">' + d.byMode.map(function (m) { return '<div class="row act"><span>' + esc(m.mode) + '</span><b>' + inr(m.amt) + '</b></div>'; }).join('') + '</div>';
+    h += '<div class="st">Payments · ' + d.list.length + (d.more ? ' (newest ' + d.list.length + ' shown)' : '') + '</div>';
+    if (!d.list.length) h += '<div class="muted">No payments in this period.</div>';
+    h += d.list.map(function (x) {
+      return '<div class="card item" onclick="openOrder(\'' + esc(x.id) + '\')"><div class="row"><b>' + esc(x.name) + '</b><b' + (x.status === 'Waiting' ? ' style="color:#B26A00"' : '') + '>' + inr(x.amount) + '</b></div>' +
+        '<div class="muted">' + esc(fmtD(x.date)) + ' · ' + esc(x.vertical) + (x.retail ? ' retail' : '') + ' · ' + esc(x.type || '') + (x.mode ? ' · ' + esc(x.mode) : '') + ' · by ' + esc(x.by || '-') +
+        (x.status === 'Waiting' ? ' · <span style="color:#B26A00">waiting for ' + esc(x.waiting) + '</span>' : (x.ok ? ' · approved by ' + esc(x.ok) : '')) + '</div></div>';
+    }).join('');
+    set(h);
+  });
 }
 
 // ---------------------------------------------------------------- Daily work updates (v22)
@@ -1504,6 +1538,7 @@ function homeTiles() {
   if (hasLine(true)) t.push(['retail', '◆', 'Retail', 'Retailers and kit orders']);
   if (S.boot.warehouses.length) t.push(['stock', '▤', 'Stock', 'Warehouse stock and entries']);
   t.push(['lead', '+', 'New lead / order', 'Add a customer or retail order']);
+  if (u.colls) t.push(['coll', '₹', 'Collections', 'Payments received, by vertical']);
   t.push(['upd', '✉', 'Daily work updates', u.mgr ? 'Who did what today, by vertical' : 'Your day – share on WhatsApp']);
   if (u.dsr) t.push(['dsr', '✎', 'Daily sales summary', 'Fill today\'s summary']);
   if (u.service) t.push(['svc', '🔧', 'Service requests', 'Customer complaints']);
