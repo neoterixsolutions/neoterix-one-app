@@ -420,6 +420,7 @@ function renderOrder(d) {
     '<div class="muted" style="margin-top:4px">Retail order ' + esc(o.OrderID) + ' · ' + esc(o.Vertical) + (o.SalesExec ? ' · ' + esc(o.SalesExec) : '') + '</div>' +
     '<div style="margin-top:6px"><b>' + esc(o.Kits || 0) + ' kit(s)</b>' + (o.KitMix ? ' · ' + esc(o.KitMix) : '') + (o.PanelType ? ' · ' + esc(o.PanelType) : '') + (o.OrderValue ? ' · ' + inr(o.OrderValue) : '') + '</div>' +
     progress(o.Stage) + '<button class="btn sec" onclick="openRetailer(\'' + o.RetailerID + '\')">Open retailer</button></div>';
+  if (R && (d.dcrStep || (d.dcr && d.dcr.length))) h += dcrBox(d);
   else h += '<div class="card" style="margin-top:10px"><div class="row"><div class="name" style="font-size:18px">' + esc(o.CustomerName) + '</div>' + stageBadge(o.Stage) + '</div>' +
     '<div class="muted" style="margin-top:4px">' + esc(o.OrderID) + ' · ' + esc(o.Vertical) + (o.City ? ' · ' + esc(o.City) : '') + '</div>' +
     '<div style="margin-top:6px">' + (o.CapacityKW ? esc(o.CapacityKW) + ' kW' : 'Capacity not set') + (o.PaymentMode ? ' · ' + esc(o.PaymentMode) : '') + (o.Subsidy === 'Yes' ? ' · Subsidy' : '') + '</div>' +
@@ -661,6 +662,31 @@ function refLoad() {
     h += '<div class="muted">Incentive amounts are worked out only for ' + esc(r.incVerts.join(', ')) + ' (the incentive scheme verticals). Lost leads are counted but earn nothing.</div>';
     box.innerHTML = h;
   });
+}
+
+// DCR certificates on a retail order (after Delivered); several per invoice
+function dcrBox(d) {
+  S.dcr = (d.dcr || []).map(function (c) { return {no: c.no, panels: c.panels, invoice: c.invoice, date: c.date, by: c.by}; });
+  return '<div class="st">DCR certificates</div><div class="card" id="dcrbox">' + dcrRows(d) + '</div>';
+}
+function dcrRows(d) {
+  d = d || S.ctx; var o = d.order, h = '';
+  var tot = S.dcr.reduce(function (a, c) { return a + (Number(c.panels) || 0); }, 0);
+  if (!S.dcr.length) h += '<div class="muted">' + (o.Stage === 'R7A DCR' ? 'No certificate entered yet.' : 'Issued after the material is delivered.') + '</div>';
+  if (!d.canDCR) return h + S.dcr.map(function (c) { return '<div class="act">' + esc(c.no) + ' · ' + esc(c.panels) + ' panels · invoice ' + esc(c.invoice) + '</div>'; }).join('');
+  h += S.dcr.map(function (c, i) {
+    return '<div class="act"><label>Certificate no.</label><input value="' + esc(c.no) + '" onchange="S.dcr[' + i + '].no=this.value"><div class="g2"><div><label>Panels</label><input type="number" min="1" value="' + esc(c.panels) + '" onchange="S.dcr[' + i + '].panels=this.value"></div>' +
+      '<div><label>Invoice no.</label><input value="' + esc(c.invoice) + '" onchange="S.dcr[' + i + '].invoice=this.value"></div></div><a class="lnk" style="color:#C62828" onclick="S.dcr.splice(' + i + ',1);$(\'dcrbox\').innerHTML=dcrRows()">Remove</a></div>';
+  }).join('');
+  if (S.dcr.length) h += '<div class="muted">' + S.dcr.length + ' certificate' + (S.dcr.length === 1 ? '' : 's') + ' · ' + tot + ' panels</div>';
+  h += '<div class="g2" style="margin-top:8px"><button class="btn sec" onclick="S.dcr.push({no:\'\',panels:\'\',invoice:S.ctx.order.InvoiceNo||\'\'});$(\'dcrbox\').innerHTML=dcrRows()">+ Add certificate</button><button class="btn" onclick="saveDCR(this)">Save certificates</button></div>';
+  if (o.Stage === 'R7A DCR') h += '<div class="muted" style="margin-top:6px">Save the certificates, then complete the "DCR" task above to move the order to Warranty.</div>';
+  return h;
+}
+function saveDCR(b) {
+  for (var i = 0; i < S.dcr.length; i++) { var c = S.dcr[i]; if (!String(c.no || '').trim()) { toast('Enter the certificate no. (or remove the empty row).'); return; } if (!(Number(c.panels) > 0)) { toast('Enter the number of panels for ' + c.no + '.'); return; } if (!String(c.invoice || '').trim()) { toast('Enter the invoice no. for ' + c.no + '.'); return; } }
+  busy(b);
+  call('saveDCR', {id: S.ctx.order.OrderID, certs: S.dcr}, function (r) { toast('DCR certificates saved.'); openOrder(S.ctx.order.OrderID); }, function () { b.disabled = false; });
 }
 
 // ---------------------------------------------------------------- Daily work updates (v22)
@@ -1360,7 +1386,9 @@ function pRender(tab) {
         h += '<div class="card"><div class="row"><b>' + esc(o.kitMix) + '</b><span class="badge ' + (o.status === 'Completed' ? 'green' : o.status === 'Cancelled' ? 'red' : '') + '">' + esc(o.status) + '</span></div>' +
           '<div style="background:#E8EEF8;border-radius:8px;height:8px;margin:6px 0"><div style="background:var(--g);height:8px;border-radius:8px;width:' + Math.round(Math.min(o.step, o.steps) / o.steps * 100) + '%"></div></div>' +
           '<div class="muted">' + esc(o.id) + ' · ' + esc(o.date) + ' · placed by ' + esc(o.by) + '</div><div class="kv">' + (o.value ? '<div class="k">Value</div><div>' + inr(o.value) + '</div><div class="k">Paid</div><div>' + inr(o.received) + '</div><div class="k">Balance</div><div><b>' + inr(o.balance) + '</b></div>' : '') +
-          (o.invoice ? '<div class="k">Invoice</div><div>' + esc(o.invoice) + '</div>' : '') + (o.dispatched ? '<div class="k">Dispatched</div><div>' + esc(o.dispatched) + '</div>' : '') + (o.delivered ? '<div class="k">Delivered</div><div>' + esc(o.delivered) + '</div>' : '') + '</div></div>';
+          (o.invoice ? '<div class="k">Invoice</div><div>' + esc(o.invoice) + '</div>' : '') + (o.dispatched ? '<div class="k">Dispatched</div><div>' + esc(o.dispatched) + '</div>' : '') + (o.delivered ? '<div class="k">Delivered</div><div>' + esc(o.delivered) + '</div>' : '') +
+          (o.dcrPanels ? '<div class="k">DCR certificate' + (o.dcr.length > 1 ? 's' : '') + '</div><div>' + (o.dcr.length ? o.dcr.map(function (c) { return esc(c.no) + ' · ' + esc(c.panels) + ' panels · inv ' + esc(c.invoice); }).join('<br>') : '<span class="muted">' + (o.delivered ? 'Being issued' : 'After delivery') + '</span>') + '</div>' : '') + '</div>' +
+          '<div class="muted" style="margin-top:4px">Step ' + Math.min(o.step + 1, o.steps) + ' of ' + o.steps + '</div></div>';
       });
       h += '<div class="st">Purchase history (invoices)</div><div class="card">' + (d.sales.length ? d.sales.map(function (s) { return '<div class="ln"><span class="nm">' + esc(s.date) + ' · ' + esc(s.invoice || '') + '<div class="muted">' + esc(s.kitMix || (s.kits ? s.kits + ' kit(s)' : '')) + '</div></span><b>' + inr(s.value) + '</b></div>'; }).join('') : '<span class="muted">No invoices yet.</span>') + '</div>';
     } else {
