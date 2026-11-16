@@ -433,6 +433,11 @@ function renderOrder(d) {
     h += '<div class="card" id="tb_' + t.TaskID + '"><div class="row"><b>Now: ' + esc(t.Title) + '</b>' + (t.Overdue ? '<span class="badge red">Overdue</span>' : '') + '</div>' +
       '<div class="muted">' + esc(t.OwnerName || ('Team: ' + (S.boot.roles[t.OwnerRole] || t.OwnerRole))) + ' · ' + due(t.DueAt) + '</div>';
     if (d.gate) h += '<div class="note ' + (d.gate.ok || o.DirectorApproval === 'Approved' ? 'ok' : 'bad') + '">' + esc(d.gate.msg) + (o.DirectorApproval === 'Approved' ? (o.CreditBy ? ' Supply on credit approved by ' + esc(o.CreditBy) + ' (payment expected by ' + esc(o.CreditDue) + ').' : ' Director has approved supply.') : '') + '</div>';
+    var payStep = t.Stage === '07 Payment Gate' || t.Stage === 'R4 Payment';
+    if (payStep && !d.canCredit && o.DirectorApproval !== 'Approved' && d.balance > 0) {
+      if (d.stageReq && d.stageReq.kind === 'Credit') h += '<div class="note">Waiting for ' + esc(d.stageReq.approver) + ' to approve proceeding with ' + inr(d.stageReq.pending) + ' pending (expected by ' + esc(fmtD(d.stageReq.due)) + '). Asked by ' + esc(d.stageReq.by) + '.</div>';
+      else if (!d.stageReq) h += '<details><summary>Ask management to proceed without full payment</summary><div class="muted">' + inr(d.balance) + ' is still pending. If the CEO approves, this step completes and the order moves on.</div><label>Balance expected by *</label><input id="ac_due" type="date"><label>Why proceed now? *</label><input id="ac_reason" placeholder="e.g. regular retailer, pays on delivery"><button class="btn" onclick="askCredit(this)">Send for approval</button></details>';
+    }
     if (d.gate && d.canCredit && o.DirectorApproval !== 'Approved') h += '<details><summary>Approve supply on credit</summary><label>Payment expected by *</label><input id="cr_due" type="date"><label>Note</label><input id="cr_note" placeholder="e.g. customer pays after installation"><button class="btn green" onclick="approveCredit(this)">Approve supply on credit</button></details>';
     var held = t.HoldUntil && String(t.HoldUntil).slice(0, 10) > (d.today || '');
     if (held) h += '<div class="note">On hold till <b>' + esc(String(t.HoldUntil).slice(0, 10)) + '</b> · ' + esc(t.HoldReason) + ' (by ' + esc(t.HoldBy) + '). Not counted as overdue.</div>' + (t.canAct ? '<button class="btn sec" onclick="resumeTask(\'' + t.TaskID + '\',this)">Resume now</button>' : '');
@@ -486,7 +491,8 @@ function renderOrder(d) {
   if (!R && d.access) h += accessCard('CUSTOMER', o.OrderID, d.access, o.Mobile);
 
   // stage change request (staff) / pending notice
-  if (d.stageReq) h += '<div class="card"><span class="badge amber">Stage change waiting for ' + esc(d.stageReq.approver) + '</span><div class="muted">' + esc(o.Stage) + ' → <b>' + esc(d.stageReq.to) + '</b> · asked by ' + esc(d.stageReq.by) + ' · ' + esc(d.stageReq.reason) + '</div></div>';
+  if (d.stageReq && d.stageReq.kind === 'Credit') { }
+  else if (d.stageReq) h += '<div class="card"><span class="badge amber">Stage change waiting for ' + esc(d.stageReq.approver) + '</span><div class="muted">' + esc(o.Stage) + ' → <b>' + esc(d.stageReq.to) + '</b> · asked by ' + esc(d.stageReq.by) + ' · ' + esc(d.stageReq.reason) + '</div></div>';
   else if (d.canAskStage && o.Status === 'Active') h += '<details><summary>Ask management to move the stage</summary><div class="card"><div class="muted">Use when the order is at the wrong step, e.g. imported orders where supply or installation is already done.</div><label>Move to</label><select id="as_st">' + S.ST.map(function (s) { return '<option' + (s.code === o.Stage ? ' selected' : '') + '>' + esc(s.code) + '</option>'; }).join('') + '<option>Closed - Complete</option></select><label>What is already done? *</label><input id="as_r" placeholder="e.g. supply done on 5 Oct, installation done"><button class="btn sec" onclick="askStage(this)">Send for approval</button></div></details>';
   // manager actions
   if (u.mgr && o.Status === 'Active') {
@@ -517,21 +523,28 @@ function holdTask(tid, b) {
   busy(b); call('holdTask', {taskId: tid, reason: $('hr_' + tid).value, until: until, note: $('hn_' + tid).value}, function () { toast('On hold till ' + until + '.'); openOrder(S.cur); }, function () { b.disabled = false; });
 }
 function resumeTask(tid, b) { busy(b); call('resumeTask', {taskId: tid}, function () { toast('Resumed.'); openOrder(S.cur); }, function () { b.disabled = false; }); }
+function askCredit(b) {
+  var due = $('ac_due').value, reason = $('ac_reason').value.trim();
+  if (!due) { toast('Choose the date by which the balance will come.'); return; }
+  if (!reason) { toast('Write why we should proceed now.'); return; }
+  busy(b); call('askCredit', {id: S.cur, due: due, reason: reason}, function (r) { toast('Sent to ' + r.approver + ' for approval.'); openOrder(S.cur); }, function () { b.disabled = false; });
+}
 function askStage(b) {
   var st = $('as_st').value, r = $('as_r').value;
   if (!r.trim()) { toast('Write what is already done.'); return; }
   busy(b); call('askStage', {id: S.cur, stage: st, reason: r}, function (x) { toast('Sent to ' + x.approver + ' for approval.'); openOrder(S.cur); }, function () { b.disabled = false; });
 }
 function stageReqCard(r) {
-  var h = '<div class="card"><div class="row"><b>' + esc(r.customer || r.order) + '</b><span class="badge amber">' + esc(r.vertical) + '</span></div><div style="margin-top:4px">' + esc(r.from) + ' → <b>' + esc(r.to) + '</b></div>' +
+  var h = '<div class="card"><div class="row"><b>' + esc(r.customer || r.order) + '</b><span class="badge amber">' + esc(r.vertical) + '</span></div>' +
+    (r.kind === 'Credit' ? '<div style="margin-top:4px"><b>Proceed without full payment</b> · ' + inr(r.pending) + ' pending · expected by ' + esc(fmtD(r.due)) + '</div>' : '<div style="margin-top:4px">' + esc(r.from) + ' → <b>' + esc(r.to) + '</b></div>') +
     '<div>' + esc(r.reason) + '</div><div class="muted">Asked by ' + esc(r.by) + ' · ' + esc(r.at) + ' · <span class="lnk" onclick="openOrder(\'' + esc(r.order) + '\')">open order</span></div>';
-  if (r.canDecide) h += '<input id="sr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decideStage(\'' + r.id + '\',true,this)">Approve move</button><button class="btn sec" onclick="decideStage(\'' + r.id + '\',false,this)">Reject</button></div>';
+  if (r.canDecide) h += '<input id="sr_' + r.id + '" placeholder="Reason (needed to reject)"><div class="two"><button class="btn green" onclick="decideStage(\'' + r.id + '\',true,this)">' + (r.kind === 'Credit' ? 'Approve – proceed' : 'Approve move') + '</button><button class="btn sec" onclick="decideStage(\'' + r.id + '\',false,this)">Reject</button></div>';
   return h + '</div>';
 }
 function decideStage(id, ok, b) {
   var reason = ($('sr_' + id) || {}).value || '';
   if (!ok && !reason.trim()) { toast('Write the reason for rejecting.'); return; }
-  busy(b); call('decideStage', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Order moved.' : 'Request rejected.'); work(); }, function () { b.disabled = false; });
+  busy(b); call('decideStage', {id: id, approve: ok, reason: reason}, function (r) { toast(r.status === 'Approved' ? 'Approved – order moved on.' : 'Request rejected.'); work(); }, function () { b.disabled = false; });
 }
 function approveGate() { call('saveOrder', {id: S.cur, values: {DirectorApproval: 'Approved'}}, function () { toast('Supply approved.'); openOrder(S.cur); }); }
 function reassign(tid) { call('reassign', {taskId: tid, ownerName: $('ra_' + tid).value}, function () { toast('Reassigned.'); openOrder(S.cur); }); }
