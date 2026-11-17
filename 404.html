@@ -271,23 +271,20 @@ function work() {
     }
     if (u.mgr) h += '<div class="chips"><span class="chip ' + (S.scope === 'mine' ? 'on' : '') + '" onclick="S.scope=\'mine\';work()">My tasks</span><span class="chip ' + (S.scope === 'team' ? 'on' : '') + '" onclick="S.scope=\'team\';work()">Whole team</span></div>';
     var over = d.tasks.filter(function (t) { return t.Overdue; }).length;
+    var credR = (d.stageApprovals || []).filter(function (r) { return r.kind === 'Credit'; }), stR = (d.stageApprovals || []).filter(function (r) { return r.kind !== 'Credit'; });
+    var nAp = (d.payApprovals || []).length + (d.retApprovals || []).length + (d.stageApprovals || []).length + (d.approvals || []).length;
+    if (nAp) {
+      h += '<div class="h" style="color:#B26A00">Waiting for your approval · ' + nAp + '</div>';
+      if (credR.length) { h += '<div class="st">Proceed without full payment · ' + credR.length + '</div>'; credR.forEach(function (r) { h += stageReqCard(r); }); }
+      if ((d.payApprovals || []).length) { h += '<div class="st">Payments to approve · ' + d.payApprovals.length + '</div>'; d.payApprovals.forEach(function (r) { h += payReqCard(r); }); }
+      if (stR.length) { h += '<div class="st">Stage changes to approve · ' + stR.length + '</div>'; stR.forEach(function (r) { h += stageReqCard(r); }); }
+      if ((d.retApprovals || []).length) { h += '<div class="st">Retailer deletions to approve · ' + d.retApprovals.length + '</div>'; d.retApprovals.forEach(function (r) { h += retDelCard(r); }); }
+    }
     h += '<div class="h">' + (S.scope === 'team' ? 'Team work' : 'My work') + ' · ' + d.tasks.length + '</div>';
     if (over) h += '<div class="note bad">' + over + ' task' + (over > 1 ? 's are' : ' is') + ' overdue.</div>';
     if (d.service) h += '<div class="card item" onclick="svcScreen(false)"><div class="row"><b>Service requests</b><span class="badge ' + (d.service ? 'amber' : '') + '">' + (d.service || 0) + ' open</span></div></div>';
     if (d.dsr && d.dsr.pending) h += '<div class="card item" onclick="dsrScreen()"><div class="row"><b>Daily sales summary</b><span class="badge ' + (d.dsr.pending ? 'amber' : 'green') + '">' + (d.dsr.pending ? d.dsr.pending + ' to fill today' : 'Done today') + '</span></div></div>';
 
-    if ((d.payApprovals || []).length) {
-      h += '<div class="st">Payments to approve · ' + d.payApprovals.length + '</div>';
-      d.payApprovals.forEach(function (r) { h += payReqCard(r); });
-    }
-    if ((d.retApprovals || []).length) {
-      h += '<div class="st">Retailer deletions to approve · ' + d.retApprovals.length + '</div>';
-      d.retApprovals.forEach(function (r) { h += retDelCard(r); });
-    }
-    if ((d.stageApprovals || []).length) {
-      h += '<div class="st">Stage changes to approve · ' + d.stageApprovals.length + '</div>';
-      d.stageApprovals.forEach(function (r) { h += stageReqCard(r); });
-    }
     if (!d.tasks.length && !(d.follow || []).length && !(d.approvals || []).length && !(d.payApprovals || []).length && !(d.retApprovals || []).length && !(d.stageApprovals || []).length) h += '<div class="card muted">Nothing waiting on you right now.</div>';
     if ((d.approvals || []).length) {
       h += '<div class="st">Stock entries to approve · ' + d.approvals.length + '</div>';
